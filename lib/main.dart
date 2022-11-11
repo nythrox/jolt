@@ -3,7 +3,6 @@ import 'package:riverpod/riverpod.dart';
 import 'package:rxdart/rxdart.dart';
 
 void main() {
-
   final loginStore = LoginStore();
   loginStore.email.listen((value) {
     print("---$value---");
@@ -16,7 +15,6 @@ void main() {
 // typedef Jolt<T> = BehaviorSubject<T>;
 
 typedef Exec = U Function<U>(Jolt<U> jolt);
-
 
 // loading doesnt notify
 // need 2 test with nullable value!
@@ -69,7 +67,7 @@ enum JoltStatus {
 
 // reason why this instead of addStream(): addstream doesnt rewrite it, gives error
 
-// you can take this pretty far, but the problem is that Streams dont support Loading 
+// you can take this pretty far, but the problem is that Streams dont support Loading
 // being notified. So you need to have a Stream<Result<T>>. At that point, you might
 // as well have different objects
 
@@ -87,9 +85,9 @@ enum JoltStatus {
 */
 class Jolt<T> extends Whatever<T> {
   T? _value;
-  
+
   dynamic externalSubscription;
-  
+
   JoltStatus _status;
   JoltStatus _previousStatus;
   JoltStatus get status => _status;
@@ -114,31 +112,31 @@ class Jolt<T> extends Whatever<T> {
       action?.call();
     }
   }
-  
+
   bool get loading => status == JoltStatus.loading;
   set loading(bool loading) {
     if (loading == false) _setStatus(_previousStatus);
     _setStatus(JoltStatus.loading);
   }
-  
+
   T get value {
     return _value!;
   }
 
   set value(T value) => add(value);
 
-   Object? _error;
-  
-   Object? get error => _error;
-  
-   set error(Object? error) {
-     if (error == null) {
-       _setStatus(_previousStatus);
-     }else {
-      addError(error);       
-     }
-   }
-  
+  Object? _error;
+
+  Object? get error => _error;
+
+  set error(Object? error) {
+    if (error == null) {
+      _setStatus(_previousStatus);
+    } else {
+      addError(error);
+    }
+  }
+
   @override
   void add(T data) {
     _setStatus(JoltStatus.value, () {
@@ -157,21 +155,25 @@ class Jolt<T> extends Whatever<T> {
   Future<T> get future {
     final c = Completer<T>();
     late StreamSubscription sub;
-    sub = listen((value) {
-      c.complete(value);
-      sub.cancel();
-    }, onError: (err) {
-      c.completeError(err);
-      sub.cancel();
-    },);
+    sub = listen(
+      (value) {
+        c.complete(value);
+        sub.cancel();
+      },
+      onError: (err) {
+        c.completeError(err);
+        sub.cancel();
+      },
+    );
     return c.future;
   }
-  
+
   set future(Future<T> future) {
     _setStatus(JoltStatus.loading);
     late final FutureSubscription<T> subscription;
     subscription = FutureSubscription(
-      (value) => externalSubscription == subscription ? this.value = value : null,
+      (value) =>
+          externalSubscription == subscription ? this.value = value : null,
       (error, stackTrace) => externalSubscription == subscription
           ? this.error = error ?? Error()
           : null,
@@ -179,7 +181,7 @@ class Jolt<T> extends Whatever<T> {
     future.then(subscription.onValue).catchError(subscription.onError);
     externalSubscription = subscription;
   }
-  
+
   Jolt<T> get stream => this;
 
   set stream(Stream<T> stream) {
@@ -192,9 +194,7 @@ class Jolt<T> extends Whatever<T> {
     );
     externalSubscription = subscription;
   }
- 
- 
-  
+
   Jolt([T? value])
       : _value = value,
         _status = JoltStatus.value,
@@ -254,8 +254,6 @@ class LoginStore {
 Future<bool> loginApi(String email, String password) {
   return Future.value(true);
 }
-
-
 
 // fourth attempt with BehaviorSubject
 
