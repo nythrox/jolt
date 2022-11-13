@@ -1,54 +1,46 @@
+// ignore_for_file: prefer_function_declarations_over_variables
+
+// first problem: if i were to simply have a special Controller<I,O>
+// `I` would not be able to be debounced, treated as a stream, etc. 
+// because it is a simple add(), so at most it can be synchronously transformed(A -> B)
+// but not more than that (temporal).
+
+// therefore, I think it would simply be enough to preserve the I, and only transform the O
+// so you can always keep the original object, but get a different result
+
 import 'dart:async';
 
-import 'package:rxdart/rxdart.dart';
+final Transform<String, int> ab = (input) {
+  final controller = StreamController<int>(sync: true);
+  final subscription = input.listen((data) => controller.add(int.parse(data)));
+  controller.onCancel = subscription.cancel;
+  return controller.stream;
+};
 
-// when editing the input, BuildableStream.fromInputStream()
-// when editing the output, BuildableStream.transform()
+final Transform<int, double> bc = (input) {
+  final controller = StreamController<double>(sync: true);
+  final subscription = input.listen((data) => controller.add(data.toDouble()));
+  controller.onCancel = subscription.cancel;
+  return controller.stream;
+};
 
-class BuildableStream<I, O> implements Sink<I> {
-  late final StreamController<O> controller;
+final Transform<String, double> ac = (str) {
+  return bc(ab(str));
+};
 
-  late Stream<O> stream;
+class BuilderStream<I, O> implements Sink<I> {
+  final StreamController<O> controller = StreamController();
+  final StreamTransformer<I, O> transformer;
 
-  BuildableStream.fromStream(this.stream);
+  BuilderStream(this.transformer);
 
-  BuildableStream() {
-    controller = StreamController();
-    stream = controller.stream;
-  }
-  
-  add(I data) {
-    controller.add(data);
-  }
-
-  BuildableStream<I2, O> transformInput<I2>(StreamTransformer<I2, I> transformer) {
-    BuildableStream<I2,I>().stream.listen((event) {
-      add(event);
-    });
-    return BuildableStream<I2, O>.fromStream(stream);
-  }
-
-  BuildableStream<I, O2> transformOutput<O2>(StreamTransformer<O, O2> transformer) {
-    return BuildableStream.fromStream(stream.transform(transformer));
-  }
-  
-  @override
-  void close() {
-    controller.close();
-  }
-}
-
-class Whatever<T> extends StreamView<T> implements Sink<T> {
-  StreamController<T> controller;
-  Whatever(this.controller) : super(controller.stream);
+  BuilderStream.id() : transformer = StreamTransformer.fromHandlers();
 
   @override
-  void add(T data) {
-    controller.add(data);
+  void add(I data) {
+    
   }
 
   @override
-  void close() {
-    controller.close();
-  }
+  void close() {}
 }
