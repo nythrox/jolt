@@ -14,7 +14,7 @@ class LateStateJolt<T> extends Jolt<T> {
   set value(T value) {
     _value = value;
     if (!valueSet) valueSet = true;
-    _controller.add(value);
+    _controller.emit(value);
   }
 
   StateJolt(T value)
