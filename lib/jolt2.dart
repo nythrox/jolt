@@ -84,7 +84,7 @@ class AsyncResult<T> {
   final ResultStatus status;
   late T _value;
   T get value => status == ResultStatus.value ? _value : throw HasNoValueError();
-  T? get extractValue => _value;
+  T? get tryValue => _value;
   final dynamic error;
 
   AsyncResult.loading()
@@ -109,7 +109,7 @@ class FutureJolt<T> extends StateJolt<AsyncResult<T>> {
   T? previousValue;
 
   /// Tries to get the current value or a previous one, if it exists.
-  T? get tryValue => valueSet ? value.extractValue : previousValue;
+  T? get tryValue => valueSet ? value.tryValue : previousValue;
 
   FutureJolt(Future<T> future) : super(AsyncResult<T>.loading()) {
     this.future = future;
@@ -122,7 +122,7 @@ class FutureJolt<T> extends StateJolt<AsyncResult<T>> {
   @override
   void add(AsyncResult<T> data) {
     _cancelPreviousSubscription();
-    final currValue = valueSet ? value.extractValue : data.extractValue;
+    final currValue = valueSet ? value.tryValue : data.tryValue;
     previousValue = currValue;
     super.add(data);
   }
@@ -179,7 +179,7 @@ class FutureJolt<T> extends StateJolt<AsyncResult<T>> {
   
 }
 
-// can be: unset, 
+// can be: unset, error, value. once set, will never become unset
 class StreamJolt<T> extends Jolt<T?> {
 
 }
@@ -187,6 +187,8 @@ class StreamJolt<T> extends Jolt<T?> {
 typedef Exec = U Function<U>(Jolt<U> jolt);
 typedef Calc<T> = T Function(Exec exec);
 
+
+// this jolt is CLEAN, PURE. does not accept errors or async or other streams (all inpure)
 class ComputedJolt<T> extends Jolt<T> {
   late T _value;
   @override

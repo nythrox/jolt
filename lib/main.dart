@@ -83,7 +83,7 @@ enum JoltStatus {
   jolt.stream = apiCall();
 
 */
-class Jolt<T> extends Whatever<T> {
+class Jolt<T> extends Whatever<T?> {
   T? _value;
 
   dynamic externalSubscription;
@@ -104,6 +104,7 @@ class Jolt<T> extends Whatever<T> {
 //       _value = null;
       _error = null;
       action?.call();
+      add(null);
     }
     // keep the previous value (in case we set error = null)
     if (status == JoltStatus.error) {

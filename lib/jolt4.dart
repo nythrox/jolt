@@ -34,7 +34,7 @@ class BuilderStream<I, O> implements Sink<I> {
 
   BuilderStream(this.transformer);
 
-  BuilderStream.id() : transformer = StreamTransformer.fromHandlers();
+  BuilderStream.id() : transformer = StreamTran sformer.fromHandlers();
 
   @override
   void add(I data) {
