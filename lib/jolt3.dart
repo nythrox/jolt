@@ -32,6 +32,15 @@ class StateJolt<I,O> extends Jolt<I,O> {
   }
 }
 
+// add jolt.build((context, value) {
+// 
+// });
+
+// [valueJolt1, valueJolt1, valueJolt1].build((context) {
+//
+// }) 
+
+
 */
 import 'dart:async';
 
@@ -142,6 +151,8 @@ class ActionJolt<T> extends ValueEventJolt<T> {
 }
 
 abstract class ValueEventJolt<T> extends Eventable {
+
+  // for future, could do @override get stream Future<AsyncValue<T>>
   Stream<T> get stream {
     final controller = StreamController<T>();
     onEvent<ValueEvent<T>>(this, (data) {
@@ -155,7 +166,7 @@ abstract class ValueEventJolt<T> extends Eventable {
   }
 
   ValueEventJolt<T2> fromStream<T2>(Stream<T2> stream) {
-    
+
   }
 }
 

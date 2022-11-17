@@ -83,6 +83,21 @@ enum JoltStatus {
   jolt.stream = apiCall();
 
 */
+/*
+this would be a pretty gambiarra jolt, but fun to work with cuz its 
+state + future + stream
+it's untyped, so when subscribing to it u can always get .value
+but risk of exception if rn its listening to a .stream that hasn't
+given out a value
+
+it would be hard to make other jolts out of this, such as a ResetJolt or a DefaultJolt
+(maybe not so)
+
+Jolt.compute<StreamOrFutureOrValue> would still be settable after the fact
+
+inside a compute function, getting the read() value returns a AsyncSnapshot, or you can risk using the .getters
+
+ */
 class Jolt<T> extends Whatever<T?> {
   T? _value;
 

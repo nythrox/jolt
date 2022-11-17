@@ -1,155 +1,109 @@
+// ignore_for_file: curly_braces_in_flow_control_structures, prefer_function_declarations_over_variables
+
 /*
 
 // simply no land for old men. it's IMPOSSIBLE to allow for the stream.map.map because even if u solved the IO,
 you'd have to manually override every single map function for every single subtype (no type magic allowed :c)
 
+how bout:
+
+Jolt<I,O>.addTransformer<O2>() // Jolt<I,O2>
+
+
+now using the stream for only ValueEvents,
+meaning that other events will have to be normal
+method calls
+
+ok so maybe dont have .value as the required param, but some method currentValue()
+.derive should work with streams, futures, valueStreams, etc. lots of little mini classes, all being allowed
+
+be able to use .stream operators everywhere: during build, etc. have Auto Disposes
+so that u can do a stream.timeout(200).build() or final value = read(eventJolt.stream.timeout(200))
+
+
+*/
+
+/*
+
+what i want with my lib:
+
+from a single abstraction you can derive
+- observables w/ values
+- event buses (streams)
+- JoltStore (which provides additionals to inner jolts)
+
+it would be cool if u could:
+- build new jolt types from each other (be it extension, mixin, function scope composition, or something)
+- compute obsrevables based on other observables from different types
+- freely transform this abstraction from observable to changenotifier to stream to future, and let it be operated
+
+
 */
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
+import 'package:riverpod/riverpod.dart';
+import 'package:volt/jolt2.dart';
 
-class Subscription {
-  final Eventable eventable;
-  final Direction direction;
-  Subscription(this.eventable, this.direction);
+final resetter = StateProvider((ref) => false);
+final countProvider = StateProvider((ref) {
+  ref.watch(resetter);
+  return 0;
+});
+final doubleProvider = Provider((ref) => ref.watch(countProvider) * 2);
+
+void main() {
+  countProvider.notifier.read().state = 20;
+  resetter.notifier.read().state = true;
 }
 
-enum Direction { upstream, downstream }
-
-class Event<T> {
-  final Eventable source;
-  final T event;
-  Event(this.source, this.event);
-}
-
-class DisposeEvent {}
-
-void emit<T>(Jolt<T> e, data) {
-  e._controller.add(data);
-}
-
-void onEvent<T>(Eventable e, void Function(Event<T> data) listener) {
-  e._internalSubs.add(e._controller.stream.listen((event) {
-    if (event is Event<T>) {
-      listener(event);
-    }
-  }));
-}
-
-@protected
-void extend(Eventable e, Jolt jolt) {
-  e._internalSubs.add(jolt._controller.stream.listen((event) {
-    e._controller.add(event.event);
-  }));
-  onEvent<DisposeEvent>(e, (data) {
-    emit(e, DisposeEvent());
-  });
-}
-
-@protected
-void subscribe(Eventable e, Jolt jolt) {
-  e._internalSubs.add(jolt._controller.stream.listen((event) {
-    e._controller.add(event.event);
-  }));
-}
-
-class Whatever<I, O> extends StreamView<O> implements Sink<I> {
-  late StreamController<O>? controller;
-
-  Whatever(StreamController<O> controller)
-      : this.controller = controller,
-        super(controller.stream);
-  Whatever.fromStream(super.stream);
-
-  @override
-  void add(I data) {}
-
-  @override
-  void close() {
-    // TODO: implement close
-  }
-}
-
-abstract class TransformerHelper<I, O, C extends Jolt<O>> extends StreamView<O>
-    implements Sink<I> {
-  TransformerHelper(super.stream);
-
-  @override
-  TransformerHelper<I, O2, Jolt<O2>> transform<O2>(
-      StreamTransformer<O, O2> streamTransformer) {
-    return super.transform(transformer);
-  }
-}
+typedef EventListener<T> = void Function(T event);
 
 // Jolt is a ErrorlessStream
-class Jolt<T> {
-  final _controller = StreamController<T>();
+class EventJolt<T> {
+  final notifier = ValueNotifier<T?>(null);
+
+  @protected
+  void add(T value) {
+    notifier.value = value;
+    notifier.notifyListeners();
+  }
+
+  void dispose() {
+    notifier.dispose();
+  }
 
   Stream<T> get stream {
-    final controller = StreamController<T>();
-    onEvent<ValueEvent<T>>(this, (data) {
-      controller.add(data.event.newValue);
-    });
-
-    onEvent<DisposeEvent>(this, (data) {
-      controller.close();
-    });
+    final controller = StreamController<T>.broadcast();
+    var listener = (event) => controller.add(event);
+    controller.onListen = () => listen(listener);
+    controller.onCancel = () => removeListener(listener);
     return controller.stream;
   }
 
-  @override
-  Jolt<T2> fromStream<T2>(Stream<T2> stream) {
-    final newJolt = Jolt<T2>();
-    late StreamSubscription<T2> sub;
-    sub = stream.listen((event) {
-      newJolt._controller.add(event);
-    }, onDone: () {
-      sub.cancel();
-      newJolt._controller.close();
-    });
-    return newJolt;
+  final _listeners = <EventListener<T>, VoidCallback>{};
+
+  void listen(EventListener<T> listener) {
+    return notifier.addListener(
+        _listeners[listener] = () => listener(notifier.value as T));
   }
 
-  @override
-  void add(T data) {
-    _controller.add(data);
-  }
-
-  @override
-  void close() {
-    _controller.close();
-  }
-
-  // final List<Eventable> subscribers = [];
-
-  // @protected
-  // void subscribe(Eventable eventable) {
-  //   subscribers.add(eventable);
-  // }
-
-  // @protected
-  // void propagate(Event event) {
-  //   for (final subscription in subscribers) {
-  //     subscription._controller.add(event);
-  //   }
-  // }
-
-}
-
-class ActionJolt<T> extends Jolt<T> {
-  void call(T value) {
-    emit(this, ValueEvent(value));
+  void removeListener(EventListener<T> listener) {
+    return notifier.removeListener(_listeners[listener]!);
   }
 }
 
-abstract class ValueJolt<T> extends Jolt<T> {
+class ActionJolt<T> extends EventJolt<T> {
+  void call(T value) => add(value);
+}
+
+abstract class ValueJolt<T> extends EventJolt<T> {
   T get value;
 }
 
 extension Tap<T> on Stream<T> {
   void tap(void Function(T value) action) {
-    // automatically disposed thanks to Jolt.stream onEvent<DisposeEvent>
+    // WARNING: is this auto-disposed
     map(action);
   }
 }
@@ -169,6 +123,73 @@ class StateJolt<T> extends ValueJolt<T> {
 
   set value(T value) {
     _value = value;
-    emit(this, ValueEvent(value));
+    add(value);
+  }
+}
+
+// actually a MutableStateJolt, since it can have its value set
+class FutureJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
+  FutureJolt([Future<T>? future]) {
+    if (future != null)
+      this.future = future;
+    else
+      _value = const AsyncSnapshot.nothing();
+  }
+
+  late AsyncSnapshot<T> _value;
+
+  @override
+  AsyncSnapshot<T> get value => _value;
+
+  set value(AsyncSnapshot<T> value) {
+    // WARNING: AsyncSnapshot.nothing .loading could be non const
+    _value = value;
+    add(value);
+  }
+
+  var _externalSubscription;
+
+  Future<T> get future {
+    Future<T> handleSnapshot(AsyncSnapshot<T> snapshot) {
+      return snapshot.hasData
+          ? Future.value(snapshot.data)
+          : Future.error(snapshot.error ??
+              Exception(
+                  "[FutureJolt<$T>]: Expected error from failed future."));
+    }
+
+    if (_value == const AsyncSnapshot.waiting() ||
+        _value == const AsyncSnapshot.nothing())
+      return stream.first.then(handleSnapshot);
+    return handleSnapshot(_value);
+  }
+
+  set future(Future<T> future) {
+    _externalSubscription = null;
+    value = const AsyncSnapshot.waiting();
+    late final FutureSubscription<T> subscription;
+    subscription = FutureSubscription(
+      (value) => _externalSubscription == subscription
+          ? this.value = AsyncSnapshot.withData(ConnectionState.none, value)
+          : null,
+      (error, stackTrace) => _externalSubscription == subscription
+          ? value =
+              AsyncSnapshot.withError(ConnectionState.done, error ?? Error())
+          : null,
+    );
+    future.then(subscription.onValue).catchError(subscription.onError);
+    _externalSubscription = subscription;
+  }
+
+  set stream(Stream<T> stream) {
+    _externalSubscription = null;
+    value = const AsyncSnapshot.waiting();
+    late final StreamSubscription subscription;
+    subscription = stream.listen(
+      (value) => _externalSubscription == subscription ? add(value) : null,
+      onError: (error) =>
+          _externalSubscription == subscription ? addError(error) : null,
+    );
+    _externalSubscription = subscription;
   }
 }
