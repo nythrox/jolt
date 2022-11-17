@@ -34,9 +34,23 @@ from a single abstraction you can derive
 
 it would be cool if u could:
 - build new jolt types from each other (be it extension, mixin, function scope composition, or something)
+  - hidateJolt, orDefaultJolt, 
 - compute obsrevables based on other observables from different types
 - freely transform this abstraction from observable to changenotifier to stream to future, and let it be operated
 
+JoltBuilder((context, watch) {
+  final count = watch(countJolt);
+})
+
+- will it be possible to horizontally & automatically compose jolts? HidrateOrDefaultJolt
+
+Riverpod is wrong: you shouldn't have observables that are both computed AND mutable.
+
+also: explain to me how it wouldn't be easier to just
+extension Store
+  autodispose
+  stream events
+extension GetStream on ChangeNotifier
 
 */
 import 'dart:async';
@@ -45,20 +59,41 @@ import 'package:flutter/cupertino.dart';
 import 'package:riverpod/riverpod.dart';
 import 'package:volt/jolt2.dart';
 
+// StateProvider is so weird cuz it allows u to watch others & edit current
 final resetter = StateProvider((ref) => false);
 final countProvider = StateProvider((ref) {
   ref.watch(resetter);
   return 0;
 });
-final doubleProvider = Provider((ref) => ref.watch(countProvider) * 2);
+
+final doubleProvider = StateProvider((ref) => ref.watch(countProvider) * 2);
+
+final futProvider = FutureProvider((ref) async {
+  return 2;
+});
+
+final StreamProvider<Null> strProvider = StreamProvider((ref) async* {
+  final lala = ref.read(futProvider);
+  final owo = ref.read(strProvider);
+  ref.read(futProvider.future);
+});
 
 void main() {
   countProvider.notifier.read().state = 20;
   resetter.notifier.read().state = true;
+
+  final haha = ComputedJolt.fromStream((watch) async* {
+    for (final future in [1, 2, 3, 4, 5].map(Future.value)) {
+      var result = await future;
+      yield result;
+    }
+  });
 }
 
 typedef EventListener<T> = void Function(T event);
 
+// Although it’s possible to create classes that extend Stream with more functionality by extending the Stream class and implementing the listen method and the extra functionality on top, that is generally not recommended because it introduces a new type that users have to consider. Instead of a class that is a Stream (and more), you can often make a class that has a Stream (and more).
+// https://dart.dev/articles/libraries/creating-streams#creating-a-stream-from-scratch
 // Jolt is a ErrorlessStream
 class EventJolt<T> {
   final notifier = ValueNotifier<T?>(null);
@@ -73,8 +108,9 @@ class EventJolt<T> {
     notifier.dispose();
   }
 
+  // check how this works after cancelling, re-subscribing, if it works for multiple streams
   Stream<T> get stream {
-    final controller = StreamController<T>.broadcast();
+    final controller = StreamController<T>.broadcast(sync: true);
     var listener = (event) => controller.add(event);
     controller.onListen = () => listen(listener);
     controller.onCancel = () => removeListener(listener);
@@ -111,6 +147,97 @@ extension Tap<T> on Stream<T> {
 class ValueEvent<T> {
   final T newValue;
   ValueEvent(this.newValue);
+}
+
+class ComputedJolt<T> extends ValueJolt<T> {
+  late T _value;
+
+  @override
+  T get value => _value;
+
+  final Map<Jolt, StreamSubscription> _subscriptions = {};
+
+  ComputedJolt._();
+
+  ComputedJolt(T Function(Exec) calc) {
+    void handleValue(T value) {
+      _value = value;
+      add(_value);
+    }
+
+    U handleCalc<U>(Jolt<U> jolt) {
+      _subscriptions[jolt] ??=
+          jolt.listen((value) => handleValue(calc(handleCalc)));
+      return jolt.value;
+    }
+
+    handleValue(calc(handleCalc));
+  }
+
+  static ComputedJolt<AsyncSnapshot<T>> fromFuture<T>(
+      Future<T> Function(Exec) calc) {
+    final computed = ComputedJolt<AsyncSnapshot<T>>._();
+    computed._value = const AsyncSnapshot.waiting();
+    computed.add(computed._value);
+
+    void handleValue(Future<T> value) {
+      value.then((value) {
+        computed._value = AsyncSnapshot.withData(ConnectionState.active, value);
+        computed.add(computed._value);
+      }).catchError((error) {
+        computed._value =
+            AsyncSnapshot.withError(ConnectionState.active, error);
+        computed.add(computed._value);
+      });
+    }
+
+    U handleCalc<U>(Jolt<U> jolt) {
+      computed._subscriptions[jolt] ??=
+          jolt.listen((value) => handleValue(calc(handleCalc)));
+      return jolt.value;
+    }
+
+    handleValue(calc(handleCalc));
+
+    return computed;
+  }
+
+  static ComputedJolt<AsyncSnapshot<T>> fromStream<T>(
+      Stream<T> Function(Exec) calc) {
+    final computed = ComputedJolt<AsyncSnapshot<T>>._();
+    computed._value = const AsyncSnapshot.waiting();
+    computed.add(computed._value);
+
+    void handleValue(Stream<T> value) {
+      final sub = value.listen(
+        (value) {
+          computed._value =
+              AsyncSnapshot.withData(ConnectionState.active, value);
+          computed.add(computed._value);
+        },
+        onError: (error) {
+          computed._value =
+              AsyncSnapshot.withError(ConnectionState.active, error);
+          computed.add(computed._value);
+        },
+      );
+      final prevSub = computed._subscriptions[computed];
+      if (prevSub != null) {
+        prevSub.cancel();
+      }
+      computed._subscriptions[computed] = sub;
+    }
+
+    U handleCalc<U>(Jolt<U> jolt) {
+      computed._subscriptions[jolt] ??=
+          jolt.listen((value) => handleValue(calc(handleCalc)));
+      return jolt.value;
+    }
+
+    handleValue(calc(handleCalc));
+
+    return computed;
+  }
 }
 
 class StateJolt<T> extends ValueJolt<T> {
@@ -185,6 +312,9 @@ class FutureJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
     _externalSubscription = null;
     value = const AsyncSnapshot.waiting();
     late final StreamSubscription subscription;
+    // WARNING:
+    // If you use StreamController, the onListen callback is called before the listen call returns the StreamSubscription. Don’t let the onListen callback depend on the subscription already existing. For example, in the following code, an onListen event fires (and handler is called) before the subscription variable has a valid value.
+    // https://dart.dev/articles/libraries/creating-streams#creating-a-stream-from-scratch
     subscription = stream.listen(
       (value) => _externalSubscription == subscription ? add(value) : null,
       onError: (error) =>

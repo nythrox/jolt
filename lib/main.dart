@@ -97,6 +97,9 @@ Jolt.compute<StreamOrFutureOrValue> would still be settable after the fact
 
 inside a compute function, getting the read() value returns a AsyncSnapshot, or you can risk using the .getters
 
+stream isn't the fundamental abstraction for state + future + stream, because it doesnt allow for emitting Loading.
+remake this using a ChangeNotifier<T>, with T get value, bool get loading, Error? get error, status { idle (unset), loading, value, done(?)(no, never, since this is mutable) }
+
  */
 class Jolt<T> extends Whatever<T?> {
   T? _value;

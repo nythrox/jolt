@@ -8,6 +8,8 @@
 // therefore, I think it would simply be enough to preserve the I, and only transform the O
 // so you can always keep the original object, but get a different result
 
+// still want 2 see this work nicely
+
 import 'dart:async';
 
 final Transform<String, int> ab = (input) {
