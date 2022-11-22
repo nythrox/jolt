@@ -40,6 +40,42 @@ class StateJolt<I,O> extends Jolt<I,O> {
 //
 // }) 
 
+
+// to have the simplicity of Jotai,
+// you must have a Jolt.fromStream(derive(() { watch(a) + watch(b) + watch(c) }))
+// and allow for custom methods, that add directly to the initial stream
+
+function asyncJotai() {
+  final value = atom(AsyncSnapshot.nothing()) // read write
+  final tracking = atom<Future | Stream | null>() // read write
+  final result = atom((get) { // read only
+    if (tracking is Future) return tracking.futureState.map({ loading: loading, done; done, error: error })
+    if (tracking is Stream) return tracking.streamState
+    else return value
+  }) 
+  return [
+    result,
+    {
+    setFuture(future) => tracking.value = future
+    setStream(stream) => tracking.value = stream
+    setValue(value) => tracking.value = null
+  }]
+}
+
+a Jolt is a Super-Stream Controller
+  that allows you to watch multiple values
+  add multiple inputs (methods)
+  and return a single output
+
+a Jolt is a type of StreamController: can have .value, has custom methods other than add() (.value=, .future=), and contains no addError()
+
+you can make some derivations:
+Jolt<AsyncValue<T>> computeFuture<T>(Exec<Future<T>> exec) {
+  return compute(exec).pipe()
+}
+
+if u want it to be a custom jolt:
+
 */
 import 'dart:async';
 

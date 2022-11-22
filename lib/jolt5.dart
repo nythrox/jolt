@@ -80,7 +80,6 @@ import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
 import 'package:riverpod/riverpod.dart';
-import 'package:volt/jolt2.dart';
 
 // StateProvider is so weird cuz it allows u to watch others & edit current
 final resetter = StateProvider((ref) => false);

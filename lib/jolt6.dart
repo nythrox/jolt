@@ -92,7 +92,9 @@ class ComputedJolt<T> extends BaseJolt<T> {
     super.close();
   }
 
-  ComputedJolt(Calc<T> calc) : super._() {
+  late final Calc<T> calc;
+
+  ComputedJolt(this.calc) : super._() {
     void recalculate() {
       _value = calc(<U>(BaseJolt<U> jolt) {
         subscriptions[jolt] ??= jolt.listen((value) {
@@ -105,6 +107,10 @@ class ComputedJolt<T> extends BaseJolt<T> {
 
     recalculate();
   }
+
+  ComputedJolt.custom() : super._() {
+
+  }
 }
 
 void lala() {
@@ -114,7 +120,7 @@ void lala() {
 
 abstract class BaseJolt<T> extends Whatever<T> {
   T get value;
-  BaseJolt._() : super(StreamController<T>.broadcast());
+  BaseJolt() : super(StreamController<T>.broadcast());
 }
 
 class StateJolt<T> extends BaseJolt<T> {
@@ -128,15 +134,15 @@ class StateJolt<T> extends BaseJolt<T> {
     _controller.add(value);
   }
 
-  StateJolt(this._value) : super._();
-  StateJolt.late() : super._();
+  StateJolt(this._value) : super();
+  StateJolt.late() : super();
 }
 
 
 class AsyncJolt<T> extends ComputedJolt<AsyncSnapshot<T>> {
   
   final currentValue = StateJolt(const AsyncSnapshot.nothing());
-  final tracking = StateJolt<dynamic>(null); // Stream or Future or Null
+  late final tracking = StateJolt<dynamic>(null); // Stream or Future or Null
 
   
   AsyncJolt() : super((get) {
@@ -145,3 +151,104 @@ class AsyncJolt<T> extends ComputedJolt<AsyncSnapshot<T>> {
     }
   });
 }
+
+/*
+
+
+
+
+
+
+So far we've found ways to build new jolts through
+
+(jolt2.dart)
+AsyncJolt extends StateJolt {
+  value = ...
+  set future
+  set stream
+}
+
+(jolt6.dart)
+AsyncJolt extends ComputedJolt(() => ...) {
+  set future
+  set stream
+}
+
+(jolt5.dart) // most flexible, .listen .listen .listen, multiple custom inheritance, but ugly to use (not as simply extend from derived)
+AsyncJolt extends Jolt {
+  state = StateJolt()
+  extend(state)
+    // OR
+  watch(state, (event) => this.add(state))
+}
+
+
+(jolt3.dart) weird doesn'twork onEvent, .extend()
+
+
+
+by extending ComputedJolt, you don't need to wrap it like a decorator (hiding settors), or manually set events (extend or listen)
+
+Decorator method is most flexible
+ - most flexible (custom single(1) OR multiple .listen with .add
+ - but: you have to override @value, or .add, and other methods
+
+Class Extension is most clean (Want a new jolt? extend Computed)
+
+
+@override compute is the same thing as .fromStream or extend(Compute())
+
+
+
+class AsyncJolt<T> extends Jolt<AsyncSnapshot<T>>{
+   StateJolt<AsyncSnapshot<T>> _state;
+   StateJolt<AsyncSnapshot<T>> _currentJolt;
+
+   @override 
+   AsyncSnapshot<T> compute(get) {
+     
+   }
+
+
+}
+
+class ResettableJolt<T> extends ComputedJolt<T> implements StateJolt<T> {
+
+  final StateJolt<T> state;
+  final T default;
+
+  ResettableJolt(T state, this.default) : state = StateJolt(value);
+  
+  @override T compute(get) {
+     return get(value);
+  }
+
+  @override
+  set value(T value) => state.value = value;
+
+  void reset() {
+    state.value = default;
+  }
+
+}
+
+
+
+class ResettableJolt<T> extends StateJolt<T> {
+
+  final T default;
+
+  RessetableJolt(super.value, this.default) 
+
+  void reset() {
+    value = default;
+  }
+
+}
+
+
+
+
+
+
+ */
