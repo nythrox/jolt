@@ -46,6 +46,28 @@ StateJotai() //
 Problem: can't access class members in constructor
 
 
+
+solution:
+
+// Primitives:
+ComputedJolt // read only (computed)
+StateJolt // read & write (set state)
+
+// Custom:
+
+class AsyncJolt extends CustomJolt {
+
+  @override get jolt => ComputedJolt(() => {})
+
+}
+
+
+this works because:
+- as many inputs as u want (by instancing them (autodispose) or by .reading and transforming them)
+- always a single output with no messy multiple .listens that can fire at random unordered times 
+- jolt is always a stream
+
+
  */
 
 import 'dart:async';
@@ -245,8 +267,6 @@ class ResettableJolt<T> extends StateJolt<T> {
   }
 
 }
-
-
 
 
 
