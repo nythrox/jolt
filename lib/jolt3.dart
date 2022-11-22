@@ -40,7 +40,6 @@ class StateJolt<I,O> extends Jolt<I,O> {
 //
 // }) 
 
-
 */
 import 'dart:async';
 
@@ -163,10 +162,6 @@ abstract class ValueEventJolt<T> extends Eventable {
       controller.close();
     });
     return controller.stream;
-  }
-
-  ValueEventJolt<T2> fromStream<T2>(Stream<T2> stream) {
-
   }
 }
 
@@ -335,23 +330,26 @@ class LoginStore {
   // alternative would be a .do() that preserves the original jolt, and timeOut() that does too
   late final submit = ActionJolt<LoginEvent>()
     ..stream.timeout(const Duration(seconds: 1)).where((_) => true).tap(
-      (_) async {
-        // result.loading = true;
-        // try {
-        //   final isValid = validateEmail.value;
-        //   if (isValid) {
-        //     result.value = await loginApi(email.value, password.value);
-        //   }
-        // } catch (e) {
-        //   result.error = e;
-        //   result.loading = false;
-        // }
+      (_) {
         final isValid = validateEmail.value;
         if (isValid) {
           result.future = loginApi(email.value, password.value);
         }
       },
     );
+
+  void submit2() {
+        result.loading = true;
+        try {
+          final isValid = validateEmail.value;
+          if (isValid) {
+            result.value = await loginApi(email.value, password.value);
+          }
+        } catch (e) {
+          result.error = e;
+          result.loading = false;
+        }
+  }
 }
 
 Future<bool> loginApi(String email, String password) {
