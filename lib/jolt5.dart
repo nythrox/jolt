@@ -33,8 +33,9 @@ from a single abstraction you can derive
 - JoltStore (which provides additionals to inner jolts)
 
 it would be cool if u could:
-- build new jolt types from each other (be it extension, mixin, function scope composition, or something)
+- build new jolt types from each other (be it extension, mixin, function scope composition, or something) 
   - hidateJolt, orDefaultJolt, 
+    - should it be through class extend, mixin with, extend(), or get stream => parent.stream  
 - compute obsrevables based on other observables from different types
 - freely transform this abstraction from observable to changenotifier to stream to future, and let it be operated
 
@@ -52,7 +53,29 @@ extension Store
   stream events
 extension GetStream on ChangeNotifier
 
+
+Builder((read) {
+  read(store, when(old, new => old != new))
+  readStream(store.stream.debounce().timeout().when())
+  readFutureValue
+})
+
+
+StorageAtom.fromAtom()
+
+
+question: how is ComputedJolt.fromFuture different from AsyncJolt?
+how is AsyncJolt different from Jolt<Future<T>>?
+
+- ComputedJolt is a read-only jolt that computes a new future each time a one of the read() jolts update
+- AsyncJolt is a mutable jolt that lets you add Futures and Streams as values
+- Jolt<Future<T>> is the same as AsyncJolt except you wouldn't be notified when the future's State changes, only when changing futures
+
+ComputedJolt is purely a stream (derived from others), so maybe it has no reason to be a jolt
+(since it doesnt have any setters)
+
 */
+
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
@@ -82,6 +105,17 @@ void main() {
   countProvider.notifier.read().state = 20;
   resetter.notifier.read().state = true;
 
+  final haha3 = ComputedJolt((watch) {
+    return 10;
+  });
+
+  final haha2 = ComputedJolt.fromFuture((watch) async {
+    for (final future in [1, 2, 3, 4, 5]
+        .map((i) => Future.delayed(Duration(milliseconds: i * 100)))) {
+      await future;
+    }
+  });
+
   final haha = ComputedJolt.fromStream((watch) async* {
     for (final future in [1, 2, 3, 4, 5].map(Future.value)) {
       var result = await future;
@@ -104,28 +138,69 @@ class EventJolt<T> {
     notifier.notifyListeners();
   }
 
-  void dispose() {
+  // extend: events from that jolt get transmitted to this jolt
+  // attach: listen to that jolt & when this gets disposed, dispose that one
+
+  void extend(EventJolt<T> jolt) {
+    extendMap(jolt, (T value) => value);
+  }
+
+  void extendMap<U>(EventJolt<U> jolt, T Function(U value) map) {
+    watch(jolt, (U event) => add(map(event)), disposeJolt: true);
+  }
+
+  void watch<U>(
+    EventJolt<U> jolt,
+    void Function(U value) onListen, {
+    bool disposeJolt = false,
+  }) {
+    jolt.addListener(onListen);
+    onDispose(() {
+      jolt.removeListener(onListen);
+      if (disposeJolt) jolt.dispose();
+    });
+  }
+
+  final List<FutureOr<void> Function()> onDisposeCallbacks = [];
+  void onDispose(FutureOr<void> Function() fn) => onDisposeCallbacks.add(fn);
+
+  Future<void> dispose() async {
+    await Future.wait(onDisposeCallbacks.map((fn) => Future.value(fn())));
     notifier.dispose();
   }
 
+  /// Only creates a StreamController if necessary (if .stream getter gets called)
+  StreamController<T>? _controller;
+
   // check how this works after cancelling, re-subscribing, if it works for multiple streams
   Stream<T> get stream {
-    final controller = StreamController<T>.broadcast(sync: true);
-    var listener = (event) => controller.add(event);
-    controller.onListen = () => listen(listener);
-    controller.onCancel = () => removeListener(listener);
+    final controller = _controller ??= () {
+      final controller = StreamController<T>.broadcast(sync: true);
+      final listener = (T event) => controller.add(event);
+      controller.onListen = () => addListener(listener);
+      Future<void> onCancel() {
+        removeListener(listener);
+        _controller = null;
+        return controller.close();
+      }
+
+      controller.onCancel = onCancel;
+      onDispose(onCancel);
+      return controller;
+    }();
     return controller.stream;
   }
 
   final _listeners = <EventListener<T>, VoidCallback>{};
 
-  void listen(EventListener<T> listener) {
+  void addListener(EventListener<T> listener) {
     return notifier.addListener(
         _listeners[listener] = () => listener(notifier.value as T));
   }
 
   void removeListener(EventListener<T> listener) {
-    return notifier.removeListener(_listeners[listener]!);
+    notifier.removeListener(_listeners[listener]!);
+    _listeners.remove(listener);
   }
 }
 
@@ -135,6 +210,10 @@ class ActionJolt<T> extends EventJolt<T> {
 
 abstract class ValueJolt<T> extends EventJolt<T> {
   T get value;
+}
+
+abstract class SettableJolt<T> extends EventJolt<T> {
+  set value(T value);
 }
 
 extension Tap<T> on Stream<T> {
@@ -149,77 +228,69 @@ class ValueEvent<T> {
   ValueEvent(this.newValue);
 }
 
+mixin UniqueSubscriptions on EventJolt {}
+
+typedef Exec = U Function<U>(ValueJolt<U> jolt);
+typedef Calc<T> = T Function(Exec exec);
+
 class ComputedJolt<T> extends ValueJolt<T> {
-  late T _value;
+  final StateJolt<T> jolt = StateJolt.late();
 
   @override
-  T get value => _value;
+  T get value => jolt.value;
 
-  final Map<Jolt, StreamSubscription> _subscriptions = {};
+  final Set<EventJolt> watching = {};
 
-  ComputedJolt._();
+  ComputedJolt._() {
+    extend(jolt);
+  }
 
-  ComputedJolt(T Function(Exec) calc) {
-    void handleValue(T value) {
-      _value = value;
-      add(_value);
-    }
-
-    U handleCalc<U>(Jolt<U> jolt) {
-      _subscriptions[jolt] ??=
-          jolt.listen((value) => handleValue(calc(handleCalc)));
+  run<R>(Calc<R> calc, void Function(R) handleValue) {
+    U handleCalc<U>(ValueJolt<U> jolt) {
+      if (!watching.contains(jolt)) {
+        final listener = (U value) => handleValue(calc(handleCalc));
+        jolt.addListener(listener);
+        onDispose(() => jolt.removeListener(listener));
+      }
       return jolt.value;
     }
 
     handleValue(calc(handleCalc));
   }
 
-  static ComputedJolt<AsyncSnapshot<T>> fromFuture<T>(
-      Future<T> Function(Exec) calc) {
+  ComputedJolt(Calc<T> calc) {
+    void handleValue(T value) => jolt.value = value;
+    run(calc, handleValue);
+  }
+
+  // note: should switchMap future (after every handleValue, needs to ignore the last one)
+  static ComputedJolt<AsyncSnapshot<T>> fromFuture<T>(Calc<Future<T>> calc) {
     final computed = ComputedJolt<AsyncSnapshot<T>>._();
-    computed._value = const AsyncSnapshot.waiting();
-    computed.add(computed._value);
+    computed.jolt.value = const AsyncSnapshot.waiting();
 
     void handleValue(Future<T> value) {
-      value.then((value) {
-        computed._value = AsyncSnapshot.withData(ConnectionState.active, value);
-        computed.add(computed._value);
-      }).catchError((error) {
-        computed._value =
-            AsyncSnapshot.withError(ConnectionState.active, error);
-        computed.add(computed._value);
-      });
+      value
+          .then((value) => computed.jolt.value =
+              AsyncSnapshot.withData(ConnectionState.active, value))
+          .catchError((error) => computed.jolt.value =
+              AsyncSnapshot.withError(ConnectionState.active, error));
     }
 
-    U handleCalc<U>(Jolt<U> jolt) {
-      computed._subscriptions[jolt] ??=
-          jolt.listen((value) => handleValue(calc(handleCalc)));
-      return jolt.value;
-    }
-
-    handleValue(calc(handleCalc));
-
+    computed.run(calc, handleValue);
     return computed;
   }
 
   static ComputedJolt<AsyncSnapshot<T>> fromStream<T>(
       Stream<T> Function(Exec) calc) {
     final computed = ComputedJolt<AsyncSnapshot<T>>._();
-    computed._value = const AsyncSnapshot.waiting();
-    computed.add(computed._value);
+    computed.jolt.value = const AsyncSnapshot.waiting();
 
     void handleValue(Stream<T> value) {
       final sub = value.listen(
-        (value) {
-          computed._value =
-              AsyncSnapshot.withData(ConnectionState.active, value);
-          computed.add(computed._value);
-        },
-        onError: (error) {
-          computed._value =
-              AsyncSnapshot.withError(ConnectionState.active, error);
-          computed.add(computed._value);
-        },
+        (value) => computed.jolt.value =
+            AsyncSnapshot.withData(ConnectionState.active, value),
+        onError: (error) => computed.jolt.value =
+            AsyncSnapshot.withError(ConnectionState.active, error),
       );
       final prevSub = computed._subscriptions[computed];
       if (prevSub != null) {
@@ -228,53 +299,86 @@ class ComputedJolt<T> extends ValueJolt<T> {
       computed._subscriptions[computed] = sub;
     }
 
-    U handleCalc<U>(Jolt<U> jolt) {
-      computed._subscriptions[jolt] ??=
-          jolt.listen((value) => handleValue(calc(handleCalc)));
-      return jolt.value;
-    }
-
-    handleValue(calc(handleCalc));
+    computed.run(calc, handleValue);
 
     return computed;
   }
 }
 
-class StateJolt<T> extends ValueJolt<T> {
+class FutureComputedJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
+  final AsyncJolt<T> jolt = AsyncJolt();
+  late final ComputedJolt<Future<T>> computedJolt;
+
+  @override
+  AsyncSnapshot<T> get value => jolt.value;
+
+  FutureComputedJolt(Calc<Future<T>> calc) {
+    computedJolt = ComputedJolt(calc);
+    watch(computedJolt, (Future<T> future) => jolt.future = future,
+        disposeJolt: true);
+    extend(jolt);
+  }
+}
+
+class StreamComputedJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
+  final AsyncJolt<T> jolt = AsyncJolt();
+  late final ComputedJolt<Stream<T>> computedJolt;
+
+  @override
+  AsyncSnapshot<T> get value => jolt.value;
+
+  StreamComputedJolt(Calc<Stream<T>> calc) {
+    computedJolt = ComputedJolt(calc);
+    watch(computedJolt, (Stream<T> stream) => jolt.stream = stream,
+        disposeJolt: true);
+    extend(jolt);
+  }
+}
+
+class StateJolt<T> extends ValueJolt<T> implements SettableJolt<T> {
   late T _value;
 
   @override
   T get value => _value;
 
   StateJolt(this._value);
+  StateJolt.late();
 
+  @override
   set value(T value) {
     _value = value;
     add(value);
   }
 }
 
-// actually a MutableStateJolt, since it can have its value set
-class FutureJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
-  FutureJolt([Future<T>? future]) {
-    if (future != null)
-      this.future = future;
-    else
-      _value = const AsyncSnapshot.nothing();
+// a Mutable Async Jolt that can accept futures, streams and values
+class AsyncJolt<T> extends ValueJolt<AsyncSnapshot<T>>
+    implements SettableJolt<AsyncSnapshot<T>> {
+  final StateJolt<AsyncSnapshot<T>> jolt =
+      StateJolt(const AsyncSnapshot.nothing());
+
+  AsyncJolt() {
+    extend(jolt);
   }
 
-  late AsyncSnapshot<T> _value;
+  factory AsyncJolt.fromFuture(Future<T> future) =>
+      AsyncJolt()..future = future;
+
+  factory AsyncJolt.fromStream(Stream<T> stream) =>
+      AsyncJolt()..stream = stream;
 
   @override
-  AsyncSnapshot<T> get value => _value;
+  AsyncSnapshot<T> get value => jolt.value;
 
+  ConnectionState get status => value.connectionState;
+
+  @override
   set value(AsyncSnapshot<T> value) {
     // WARNING: AsyncSnapshot.nothing .loading could be non const
-    _value = value;
-    add(value);
+    jolt.value = value;
   }
 
-  var _externalSubscription;
+  dynamic _externalSubscription;
 
   Future<T> get future {
     Future<T> handleSnapshot(AsyncSnapshot<T> snapshot) {
@@ -285,10 +389,10 @@ class FutureJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
                   "[FutureJolt<$T>]: Expected error from failed future."));
     }
 
-    if (_value == const AsyncSnapshot.waiting() ||
-        _value == const AsyncSnapshot.nothing())
+    if (value == const AsyncSnapshot.waiting() ||
+        value == const AsyncSnapshot.nothing())
       return stream.first.then(handleSnapshot);
-    return handleSnapshot(_value);
+    return handleSnapshot(value);
   }
 
   set future(Future<T> future) {
@@ -316,10 +420,84 @@ class FutureJolt<T> extends ValueJolt<AsyncSnapshot<T>> {
     // If you use StreamController, the onListen callback is called before the listen call returns the StreamSubscription. Don’t let the onListen callback depend on the subscription already existing. For example, in the following code, an onListen event fires (and handler is called) before the subscription variable has a valid value.
     // https://dart.dev/articles/libraries/creating-streams#creating-a-stream-from-scratch
     subscription = stream.listen(
-      (value) => _externalSubscription == subscription ? add(value) : null,
-      onError: (error) =>
-          _externalSubscription == subscription ? addError(error) : null,
+      (value) => _externalSubscription == subscription
+          ? jolt.value = AsyncSnapshot.withData(ConnectionState.active, value)
+          : null,
+      onError: (error) => _externalSubscription == subscription
+          ? jolt.value = AsyncSnapshot.withError(ConnectionState.done, error)
+          : null,
+      onDone: () => _externalSubscription == subscription
+          ? jolt.value = const AsyncSnapshot.nothing()
+          : null,
     );
     _externalSubscription = subscription;
   }
+}
+
+class JoltBuilder {
+  final EventJolt jolt;
+  const JoltBuilder(this.jolt); 
+}
+
+final jolt = JoltBuilder();
+
+
+class myFirstStore extends EventJolt {
+  final num = jolt(0);
+  late final double = jolt.computed((watch) => watch(num) * 2);
+  late final futr = jolt.computed.future((watch) async => 2);
+}
+void alal() {
+  jolt(0);
+  jolt.computed((_) => 2);
+  jolt.computed.future((exec) async => 2);
+  jolt.late();
+  jolt.future(Future.value(2));
+}
+
+extension s<T> on EventJolt<T> {
+  JoltBuilder get jolt => JoltBuilder(this);
+}
+
+class StateJoltBuilder {
+  const StateJoltBuilder();
+
+  StateJolt<T> call<T>(T value) => StateJolt(value);
+
+  StateJolt<T> late<T>() => StateJolt.late();
+}
+
+class AsyncJoltBuilder {
+  const AsyncJoltBuilder();
+  AsyncJolt<T> call<T>() => AsyncJolt();
+  AsyncJolt<T> stream<T>(Stream<T> stream) => AsyncJolt.fromStream(stream);
+  AsyncJolt<T> future<T>(Future<T> future) => AsyncJolt.fromFuture(future);
+}
+
+class ComputedJoltBuilder {
+  const ComputedJoltBuilder();
+
+  ComputedJolt<T> call<T>(Calc<T> calc) => ComputedJolt(calc);
+  ComputedJolt<AsyncSnapshot<T>> future<T>(Calc<Future<T>> calc) =>
+      ComputedJolt.fromFuture(calc);
+  ComputedJolt<AsyncSnapshot<T>> stream<T>(Calc<Stream<T>> calc) =>
+      ComputedJolt.fromStream(calc);
+}
+
+extension Stuff on JoltBuilder {
+  // State
+  StateJoltBuilder get state => const StateJoltBuilder();
+  StateJolt<T> call<T>(T value) => state(value);
+  StateJolt<T> late<T>() => state.late();
+
+  // Async
+  AsyncJoltBuilder get async => const AsyncJoltBuilder();
+  AsyncJolt<T> stream<T>(Stream<T> stream) => async.stream(stream);
+  AsyncJolt<T> future<T>(Future<T> future) => async.future(future);
+
+  // Event
+  EventJolt<T> events<T>() => EventJolt();
+
+  // Computed
+  ComputedJoltBuilder get computed => const ComputedJoltBuilder();
 }
