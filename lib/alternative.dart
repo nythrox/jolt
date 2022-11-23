@@ -31,9 +31,11 @@ extension toStream<T> on ChangeNotifier<T> {
   
 }
 
+CompleteToolkit
 
-
-
+- Store { useStream(), events, action }
+- StateNotifier, ComputedNotifier, AsyncNotifier { toStream() }
+- Commands w DI & Recurrent Commands (observing store streams) - how to handle takedown? how to manage context?
 
 */
 

@@ -49,6 +49,14 @@ Problem: can't access class members in constructor
 
 solution:
 
+ErrorlessStream { listen(T) }
+Jolt { T value } extends ErrorlessStream 
+
+EventStream(controller) extends ErrorlessStream 
+  or
+EventJolt extends Jolt<Null>
+
+
 // Primitives:
 ComputedJolt // read only (computed)
 StateJolt // read & write (set state)
@@ -68,32 +76,90 @@ this works because:
 - jolt is always a stream
 
 
+yes, you will always have to re-add set value (if you can set the value of your jolt)
+the reason for that is because 
+there is no need for a WritableAtom interface/hierarchy. you can just create and use any method you want. that's the point of it
+
+
+or: if you extend a atom thats not ComputedJolt, you're on your own.
+no need to extend StateJolt, this isn't Jotai where you have to reuse a single callback
+
+
+good reason to not extend StreamView:
+1 - performance
+2 - we can force .fromStream in order to .compute, that way correctly handling errors
+
+
+2do:
+find hierarchy correct for eventjolt (write only), (computed) jolt (read only) and state jolt (read write)
+ must: have default implementation for notify/listening/2stream for max performance (not that u cant use others)
+
+typedef ValueCallback<T> = void Function(T value);
+
+abstract class Trackable<T> {
+  T get value;
+  void addListener(ValueCallback<dynamic> callback);
+  void removeListener(ValueCallback<dynamic> callback);
+  void close();
+}
+
+abstract class Streamable<T> {
+  get stream<T>
+
+}
+
+class BaseJolt<T> extends Trackable<Null> {
+  @protected
+  add(T value)
+
+  @override addListener T
+  @override removeListener T
+}
+
+EventJolt<T> extends  {
+
+  @override addListener T
+  @override removeListener T
+} 
+
+Jolt extends Trackable<T> {
+  @compute => trackers;
+  @override addListener T
+  @override removeListener T
+}
+
+
+
  */
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+
+
 // implements Sink<T>
 class Whatever<T> extends StreamView<T> {
-  final StreamController<T> _controller;
-  Whatever(this._controller) : super(_controller.stream);
+  @protected
+  final StreamController<T> controller;
 
-  // @override
-  // void add(T data) {
-  //   _controller.add(data);
-  // }
+  Whatever(this.controller) : super(controller.stream);
 
-  // @override
+  @override
+  StreamSubscription<T> listen(void onData(T event)?,
+      {Function? onError, bool? cancelOnError});
+
+
   void close() {
-    _controller.close();
+    controller.close();
   }
 }
 
-abstract class ReadableAtom<T> implements StreamView<T> {
-  T get value;
+class EventJolt<T> extends Whatever<T> implements Trackable<Null> {
+  
+  @override
+  Null get value => null;
 
-  void close();
 }
 
 typedef Exec = U Function<U>(BaseJolt<U> jolt);
@@ -116,7 +182,7 @@ class ComputedJolt<T> extends BaseJolt<T> {
 
   late final Calc<T> calc;
 
-  ComputedJolt(this.calc) : super._() {
+  ComputedJolt(this.calc) {
     void recalculate() {
       _value = calc(<U>(BaseJolt<U> jolt) {
         subscriptions[jolt] ??= jolt.listen((value) {
@@ -124,14 +190,10 @@ class ComputedJolt<T> extends BaseJolt<T> {
         });
         return jolt.value;
       });
-      _controller.add(_value);
+      controller.add(_value);
     }
 
     recalculate();
-  }
-
-  ComputedJolt.custom() : super._() {
-
   }
 }
 
@@ -153,7 +215,7 @@ class StateJolt<T> extends BaseJolt<T> {
 
   set value(T value) {
     _value = value;
-    _controller.add(value);
+    controller.add(value);
   }
 
   StateJolt(this._value) : super();

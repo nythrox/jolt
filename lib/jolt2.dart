@@ -278,8 +278,7 @@ class LoginStore with Store {
   late final password = state("");
 
   late final suggestions = computedFuture((exec) async {
-    final email = exec(this.email.transform(streamTransformer));
-    DebounceStreamTransformer
+    final email = exec(email);
     return await emailSuggestions(email);
   });
 

@@ -47,6 +47,31 @@ JoltBuilder((context, watch) {
 
 Riverpod is wrong: you shouldn't have observables that are both computed AND mutable.
 
+Library-wise: 
+- unification of StateNotifier and Stream (interchangeability, stream modification operators .debounce)
+- composition problem for creating State Management objects 
+  (keep properties & composition through: 
+    - extension(statenotifier), 
+    - jotai-style computed/decorated (jotai).orElse().compose(FutureJolt.fromJolt), 
+    - streams<I,O>.map.flatMap (keep properties))
+
+Utility-wise
+- atomic mutable state, State, Computed, Future, Stream
+- streams: rx operators on ^ & use inside of computed
+- store: emits event (stream), methods can come from streams (& use operators), helpers 4 consuming streams
+
+
+i wanted 2 things
+- unification of StateNotifier and Stream models (impossible!)
+  - Stream.fromStateNotifier is possible, but loses .value
+  - StateNotifier.fromStream is impossible, streams don't have a .value
+- composition problem: universal exchange system (2ez to add new plugins) impossible in dart type system
+
+what i thought originally: static access of StateNotifier and operators+composition of Streams
+  if everything was a BehaviourSubject would still have composition problem
+  if everything was StateNotifier would have to re:make operators from zero, and EventStream wouldn't be possible
+
+
 also: explain to me how it wouldn't be easier to just
 extension Store
   autodispose
@@ -77,7 +102,6 @@ computed everything? where should computed be.
 
 how should I unify all these. How should I convert betweem them. How should I build one from the other (must I really create a new class?)
 
-
 Riverpod only has one type of Provider. 
   Computed, readonly
     - value
@@ -94,13 +118,23 @@ Since we are facilitating a mobx style, u need mutable helpers too
     - Stream
   - Value
 - Derived readonly (computed)
-  - Future
-  - Stream
+  - Async
+    - Future
+    - Stream
   - Value
 - Un-derived readonly << whats the point of having un-derived if you can't mutate it, derived is the same and better (this is inferior, but could be used as a common base)
-  - Future
-  - Stream
+  - Async
+    - Future
+    - Stream
   - Value
+- Reset
+  - Async
+    - Future
+    - Stream
+  - Value
+
+  ^ the number exponentially increased when you have not only those, but also withReset, withStorage, etc.
+  a universal exchange converter would solve this, but has its owm problems (for transforming outputs, adding prop functionality, and overriding)
 
   ^^^ do we need all these????? FUCK!!!!!!!!!!!! Provider does it with just Computed
   --------------- but they don't allow for the BEAUTY of AsyncState
@@ -129,7 +163,7 @@ Since we are facilitating a mobx style, u need mutable helpers too
     would facilitate not having to create new classes to derive, manually override props or class inherit
 
     would be for extending empty jolt .computed, since u lose the inner interface
-    unless it also has .add(), in this case u could keep .add but would still lose the rest of the interface
+    unless it also has .add(), in this case u could keep .add but would still lose the rest of the interface (ex FutureJolt().withResettable())
     once again the I,O problem (operators not modifying the original object, only the outer stream)
 
     I Repeat: conversion is only useful when converting from an empty jolt like Computed to a richer one like FutureComputed, because
@@ -146,6 +180,14 @@ Since we are facilitating a mobx style, u need mutable helpers too
     
     so basically, Decorator/Derive/Compute paradigm facilitates (manually) building jolts from each other, but doesn't
     help with converting jolts, exchanging them, composing them through declarative functions (would need HoF)
+
+    Ideal Composition: B(A).chain(C)
+        where A StateJolt(0)
+        where B(Jolt jolt) extends StreamView computed((read) => read(jolt) * 2)
+        where C.from(C)
+
+    so... should i be making composition like ZIO<R,E,A> (composing through .computed and mixins and extension) 
+    or can something better exist
 
   Jolts can either be made for extension (StreamView @override inherit) or Decorator Composition (callback params & manual-override) 
   - ideal would be everything through Decorator composition, but you end up having to re-create the same things like in Flutter 
@@ -194,14 +236,19 @@ StreamBuilder and Rx operators will always only get Stream<T>, ignoring T value.
 .asValueNotifier
 
 Things fall apart.
-Too complex, they are different models. Ignores the intricacies of different types of streams,
+Too complex, they fundamentally are different models. Ignores the intricacies of different types of streams,
 how compute() is not chain() (chain requires .value! always, chain is lazy)
 Computed doesn't even work with State.late() since Computed is eager
 ignores how streams are lazy and StateNotifiers are eager
 
 that's so fucked
 
+maybe its ok tho, riverpod forces initialValue on streams
+
 multiple different ways to create a store
+
+
+note: streams don't compose well without HKTs, neither do ValueNotifiers
 
 // simply a group
 Store {
@@ -249,6 +296,7 @@ need a way to extend (computed|state|event) jolt and only access it through its 
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
+import 'package:get/get.dart';
 import 'package:riverpod/riverpod.dart';
 
 // StateProvider is so weird cuz it allows u to watch others & edit current
@@ -271,6 +319,10 @@ final StreamProvider<Null> strProvider = StreamProvider((ref) async* {
 });
 
 void main() {
+  final test = Rx(0).stream;
+  RxString
+  debounce(listener, callback)
+
   countProvider.notifier.read().state = 20;
   resetter.notifier.read().state = true;
 
