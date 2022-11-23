@@ -14,14 +14,14 @@ import 'dart:async';
 
 final Transform<String, int> ab = (input) {
   final controller = StreamController<int>(sync: true);
-  final subscription = input.addListener((data) => controller.add(int.parse(data)));
+  final subscription = input.onEvent((data) => controller.add(int.parse(data)));
   controller.onCancel = subscription.cancel;
   return controller.stream;
 };
 
 final Transform<int, double> bc = (input) {
   final controller = StreamController<double>(sync: true);
-  final subscription = input.addListener((data) => controller.add(data.toDouble()));
+  final subscription = input.onEvent((data) => controller.add(data.toDouble()));
   controller.onCancel = subscription.cancel;
   return controller.stream;
 };
