@@ -39,6 +39,8 @@ dependencies:
   hive: 
   mobx:
   flutter_mobx:
+  get: ^4.6.5
+
   
 
 dev_dependencies:

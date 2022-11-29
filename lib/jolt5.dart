@@ -48,29 +48,36 @@ JoltBuilder((context, watch) {
 Riverpod is wrong: you shouldn't have observables that are both computed AND mutable.
 
 Library-wise: 
-- unification of StateNotifier and Stream (interchangeability, stream modification operators .debounce)
+- unification of StateNotifier and Stream (interchangeability)
 - composition problem for creating State Management objects 
   (keep properties & composition through: 
     - extension(statenotifier), 
     - jotai-style computed/decorated (jotai).orElse().compose(FutureJolt.fromJolt), 
     - streams<I,O>.map.flatMap (keep properties))
+- streams <I,O> keep original form, modify interior output stream (with operators)
 
 Utility-wise
 - atomic mutable state, State, Computed, Future, Stream
 - streams: rx operators on ^ & use inside of computed
 - store: emits event (stream), methods can come from streams (& use operators), helpers 4 consuming streams
-
+- HiveJolt (with store that redirects HiveJolts.loading)
 
 i wanted 2 things
 - unification of StateNotifier and Stream models (impossible!)
-  - Stream.fromStateNotifier is possible, but loses .value
-  - StateNotifier.fromStream is impossible, streams don't have a .value
+  - Stream.fromStateNotifier is possible, but loses initial .value
+  - StateNotifier.fromStream is impossible, streams don't have a initial .value
 - composition problem: universal exchange system (2ez to add new plugins) impossible in dart type system
 
 what i thought originally: static access of StateNotifier and operators+composition of Streams
   if everything was a BehaviourSubject would still have composition problem
   if everything was StateNotifier would have to re:make operators from zero, and EventStream wouldn't be possible
 
+Streams are a much deeper, temporal-related concept. State is a subset, a series of changes where the time
+matters less than the current state.
+
+StateNotifier, Mobx, Jolt etc are sub-sets of Streams.
+In order for a .computed to even work, .value must always represent the current state (equivalent of combineLatest)
+it doesn't work for different models (ex getting the last event emitted for a event stream)
 
 also: explain to me how it wouldn't be easier to just
 extension Store
@@ -79,16 +86,42 @@ extension Store
 extension GetStream on ChangeNotifier
 
 
-Builder((watch) {
-  watch(store, when(old, new => old != new))
-  watch(store.select((n) => n.name))
-  watchStream(store.stream.debounce().timeout().when().where())
-  watch(future.extract())
-})
+
+todo: create mobx when, await when, reaction, (other than autorun), etc for stream jolt (no T value)
+and be able to build jolts from that O.O 
+
+we can't allow stream transformations inside of .read() because that would transform it into a Stream (not jolt), losing the .value needed for instant consumption
+
+
+because I don't want it to be ValueJolt-centered, I'll leave the StreamJolt without a value and flexibilize ComputedJolt subscriptions
+
+computed lazy by default
+
+should all jolts be computed like provider/jotai 
+
+Jolts are objects that can be subscribed to, 
+they send out notificatoins to their subscribers with a value,
+which can indicate that a value has changed, and event has happened or anything else.
+They also have the concept of finality, when dispose() is called there should be no more notifications.
+Reactivity is baked into the core of Jolt.
+Jolts are hard typed and flexible in how to utilize/consume them. Since it's extremely
+type safe, everything you want to do with your jolt should be represented in the type
+system (ex: if you want to add errors, create another parameter for errors or represent the value as a Result).
+In the joltverse, we have:
+- streams: notifies listeners when an event occurs
+- mutable states: notifies listeners when there is a state change
+- 
+
+there are some primitives for consuming all Jolts: listen, when, react, etc
+and some primtiives for creating State jolts: ComputedJolt, StateJolt, JoltView
 
 
 StorageAtom.fromAtom()
 
+extensions: 
+Jolt.fromStream()
+Jolt.fromErrorStream()
+Jolt.fromFuture()
 
 question: how is ComputedJolt.fromFuture different from AsyncJolt?
 how is AsyncJolt different from Jolt<Future<T>>?
@@ -298,7 +331,26 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 import 'package:riverpod/riverpod.dart';
+import 'package:rxdart/rxdart.dart';
 
+class Whatever extends JoltView<int> {
+
+  final jolt = StateJolt(0);
+
+  @override
+  int compute(WatchBuilder watch) {
+    final value = watch.value(jolt);
+    final value2 = watch(jolt, 0);
+    final value3 = watch.transform<int, int>(jolt, 0, transform: (s) => s.debounceTime(const Duration(milliseconds: 300)).map((n) => n * 2));
+    // final s = watch.stream(Stream<int>.periodic(Duration(seconds: 1), (i) => i + 1), 0);
+    // final w = watch.jolt(EventJolt<void>()); // EventJolt.event
+    // final f = watch.jolt(AsyncJolt.fromFuture(Future.value(2))).future;
+    return value;
+  }
+
+}
+
+final owo = BehaviorSubject();
 // StateProvider is so weird cuz it allows u to watch others & edit current
 final resetter = StateProvider((ref) => false);
 final countProvider = StateProvider((ref) {
@@ -358,10 +410,13 @@ typedef EventListener<T> = void Function(T event);
 class ValueNotifierJoltHelper<T> {
   final _notifier = ValueNotifier<T?>(null);
 
+  bool isSet = false;
+
   T? get lastEmittedValue => _notifier.value;
 
   @protected
   void addEvent(T value) {
+    if (!isSet) isSet = true;
     _notifier.value = value;
     _notifier.notifyListeners();
   }
@@ -429,15 +484,37 @@ class ValueNotifierJoltHelper<T> {
   }
 }
 
-// BaseJolt for building jolts that can emit events on will
-
-// for building Jolts whoms [value] derived from others
-abstract class JoltView<T> implements Jolt<T, T> {
+mixin ValueNotifierJoltImpl<T> {
   @protected
   final helper = ValueNotifierJoltHelper<T>();
 
-  @override
+  T get currentValue => helper.lastEmittedValue as T;
+
   VoidCallback onEvent(EventListener<T> onEvent) => helper.onEvent(onEvent);
+
+  void dispose() => helper.dispose();
+
+  ValueNotifier<T> get asNotifier => ValueNotifier(currentValue);
+  
+  // TODO: test if this gets the child's @override currentValue
+  Stream<T> get asStream => helper.asStream.startWith(currentValue);
+  
+}
+
+// BaseJolt for building jolts that can emit events on will
+
+// for building Jolts whoms [value] derived from others
+abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>  {
+
+  // JoltView.late();
+  @override
+  T get currentValue { 
+    if (helper.isSet) return helper.lastEmittedValue!;
+    else {
+      run();
+      return helper.lastEmittedValue!;
+    }
+  }
 
   static JoltView<T> fromJolt<T>(ValueJolt<T> jolt) {
     return ComputedJolt((exec) => exec(jolt));
@@ -447,43 +524,105 @@ abstract class JoltView<T> implements Jolt<T, T> {
 
   }
 
-  @override
-  void dispose() => helper.dispose();
-  
-  @override Stream<T> get asStream => helper.asStream;
-
-  @override
-  T get value => helper
-      .lastEmittedValue!; // notifier value will already be set (after constructor call)
-
-  final Set<ValueJolt> _watching = {};
-
-  final Map<Symbol, dynamic> vars = {};
+  final Set<Jolt> _watching = {};
 
   // use(Jolt(0))
-
-  T compute(Watch watch);
+  final Map<Symbol, dynamic> vars = {};
 
   JoltView() {
-    _run<R>(Compute<R> calc, void Function(R) handleValue) {
-      U handleCalc<U>(ValueJolt<U> jolt) {
-        if (!_watching.contains(jolt)) {
-          final listener = jolt.onEvent((_) => handleValue(calc(handleCalc)));
-          helper.onDispose(listener);
-        }
-        return jolt.value;
-      }
-
-      handleValue(calc(handleCalc));
-    }
-
-    _run(compute, helper.addEvent);
+    run();
   }
+
+  T compute(WatchBuilder watch);
+
+  @protected
+  void run() => _run(compute, helper.addEvent);
+  
+  void _run<R>(Compute<R> calc, void Function(R) handleValue) {
+    handleValue(calc(_handleCalc));
+  }
+
 }
 
-typedef ValueJolt<T> = Jolt<T, dynamic>;
-typedef Watch = T Function<T>(ValueJolt<T> jolt);
-typedef Compute<T> = T Function(Watch exec);
+// Builder((watch) {
+//   watch(store, when: (old, new) => old != new)
+//   watch(store, select: (n) => n.name)
+//   watch.stream(store.stream.debounce().timeout().when().where())
+//   watch.jolt(future).extract()
+// })
+
+class WatchBuilder {
+
+  final JoltView owner;
+
+  WatchBuilder(this.owner);
+  
+  /// Computed always needs a immediate value when consuming Jolts 
+  /// watch.value(counter, transform: (stream) => stream.debounce())
+  /// watch(event, initialValue: null, transform: (stream) => stream.debounce())
+  T call<T>(Jolt<T> jolt, T initialValue) {
+    bool valueSet = false;
+    T? value;
+    if (!owner._watching.contains(jolt)) {
+      final listener = jolt.onEvent((value) {
+        value = value;
+        valueSet = true;
+        owner.run();
+      });
+      owner.helper.onDispose(listener);
+    }
+    return valueSet ? value! : initialValue;
+  }
+
+  T2 transform<T, T2>(Jolt<T> jolt, T2 initialValue, {required Stream<T2> Function(Stream<T> stream) transform}) {
+    bool valueSet = false;
+    T2? value;
+    Stream<T2> transformedStream;
+    if (!owner._watching.contains(jolt)) {
+      transformedStream = transform(jolt.asStream);
+      final subscription = transformedStream.listen((value) {
+        value = value;
+        valueSet = true;
+        owner.run();
+      });
+      owner.helper.onDispose(subscription.cancel);
+    }
+    return valueSet ? value! : initialValue;
+  }
+
+  // Stream<T2> Function(Stream<T>)? transform}
+  T value<T>(ValueJolt<T> jolt) {
+    if (!owner._watching.contains(jolt)) {
+      final listener = jolt.onEvent((_) => owner.run());
+      owner.helper.onDispose(listener);
+    }
+    return jolt.currentValue;
+  }
+
+
+  // J jolt<T, J extends Jolt<T>>(J jolt) {
+  //   return jolt;
+  // }
+
+  // T stream<T, S extends Stream<T>>(S stream, T initialValue) {
+  //   return istream;
+  // }
+
+  // S controller<T, S extends StreamController<T>>(S controller) {
+  //   return controller;
+  // }
+
+  // T notifier<T, N extends ValueNotifier<T>>(N notifier) {
+  //   return notifier.value;
+  // }  
+
+  // L listenable<L extends Listenable>(L listenable) {
+  //   return listenable;
+  // }
+
+}
+
+typedef Compute<T> = T Function(WatchBuilder exec);
 
 class ComputedJolt<T> extends JoltView<T> {
   final Compute<T> computeFn;
@@ -491,7 +630,7 @@ class ComputedJolt<T> extends JoltView<T> {
   ComputedJolt(this.computeFn);
 
   @override
-  T compute(Watch watch) => computeFn(watch);
+  T compute(WatchBuilder watch) => computeFn(watch);
 }
 
 class ResettableJolt<T> extends JoltView<T> {
@@ -541,12 +680,20 @@ class HiveJolt<T extends JsonSerializable> extends JoltView<AsyncSnapshot<T>> {
   }
 }
 
-abstract class Jolt<T, U> {
-  T get value;
-  VoidCallback onEvent(EventListener<U> onEvent);
+abstract class ValueJolt<T> extends Jolt<T> {
+  T get currentValue;  
+  ValueNotifier<T> get asNotifier;
+
+  // Stream must StartWith [currentValue]
+  @override 
+  Stream<T> get asStream;
+}
+
+abstract class Jolt<T> {
+  VoidCallback onEvent(EventListener<T> onEvent);
   void dispose();
 
-  Stream<U> get asStream;
+  Stream<T> get asStream;
 }
 
 extension Convertable<T,U> on Jolt<T,U> {
@@ -559,15 +706,37 @@ extension Convertable<T,U> on Jolt<T,U> {
   }
 }
 
-class EventJolt<T> extends ValueNotifierJoltHelper<T> implements Jolt<void, T> {
-  @override
-  get value => {};
+class StreamJoltHelper<T> extends StreamView<T> {  
 
-  void add(T value) => addEvent(value);
+  final StreamController<T> _controller;
+  StreamJoltHelper(this._controller) : super(_controller.stream);
+
 }
 
-class ActionJolt<T> extends EventJolt<T> {
-  void call(T value) => add(value);
+class EventJolt<T> extends StreamJoltHelper<T> implements Jolt<T> {
+
+  EventJolt(): super(StreamController.broadcast());
+
+  void add(T value) => _controller.add(value);
+  
+  @override
+  Stream<T> get asStream => _controller.stream;
+  
+  @override
+  void dispose() {
+    _controller.close();
+  }
+  
+  @override
+  VoidCallback onEvent(EventListener<T> onEvent) {
+    final sub = _controller.stream.listen(onEvent);
+    return () => sub.cancel();
+  }
+  
+}
+
+class ActionJolt<T> with ValueNotifierJoltImpl<T> implements Jolt<T> {
+  void call(T value) => helper.addEvent(value);
 }
 
 extension Tap<T> on Stream<T> {
@@ -576,29 +745,18 @@ extension Tap<T> on Stream<T> {
     map(action);
   }
 }
+ 
+class StateJolt<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T> {
 
-mixin UniqueSubscriptions on ValueNotifierJoltHelper {}
+  @override T get currentValue => state;
 
-class StateJolt<T> implements Jolt<T, T> {
-  @protected
-  final helper = ValueNotifierJoltHelper<T>();
-
-  @override Stream<T> get asStream => helper.asStream;
-
-  @override
-  T get value => helper.lastEmittedValue!;
-  set value(T value) => helper.addEvent(value);
+  T get state => helper.lastEmittedValue!;
+  set state(T value) => helper.addEvent(value);
 
   StateJolt(T value) {
-    this.value = value;
+    state = value;
   }
   StateJolt.late();
-
-  @override
-  void dispose() => helper.dispose();
-
-  @override
-  VoidCallback onEvent(EventListener<T> onEvent) => helper.onEvent(onEvent);
 }
 
 class FutureSubscription<T> {
@@ -616,9 +774,6 @@ class StreamJolt<T> extends JoltView<AsyncSnapshot<T>> {
   late final StreamSubscription subscription;
 
   StreamJolt(this.stream) {
-    // WARNING:
-    // If you use StreamController, the onListen callback is called before the listen call returns the StreamSubscription. Don’t let the onListen callback depend on the subscription already existing. For example, in the following code, an onListen event fires (and handler is called) before the subscription variable has a valid value.
-    // https://dart.dev/articles/libraries/creating-streams#creating-a-stream-from-scratch
     subscription = stream.listen(
       (value) =>
           jolt.value = AsyncSnapshot.withData(ConnectionState.active, value),
