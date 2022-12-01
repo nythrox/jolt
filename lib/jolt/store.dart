@@ -13,6 +13,9 @@ import 'views.dart';
 // streams still need to be disposed. extension .attach() on Stream (while we dont have jolt transformations)
 // add global observer using .attach system
 class Store {
+
+  late final jolt = JoltBuilder(this);
+
   final List<VoidCallback> callbacks = [];
 
   void onDispose(VoidCallback onDispose) => callbacks.add(onDispose);

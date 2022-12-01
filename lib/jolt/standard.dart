@@ -184,6 +184,7 @@ abstract class AsyncStateJolt<T> implements ValueJolt<AsyncSnapshot<T>> {
   bool get hasData;
 
   T get data;
+  void set data(T value);
   Stream<T> get stream;
   set stream(Stream<T> stream);
   Future<T> get future;
@@ -237,6 +238,9 @@ class MutableStateJolt<T> extends ComputedView<AsyncSnapshot<T>> with Store impl
 
   @override
   T get data => state.currentValue.data!;
+
+  @override
+  set data(T value) => this.value = AsyncSnapshot.withData(ConnectionState.done, value);
 
   @override
   Future<T> get future {

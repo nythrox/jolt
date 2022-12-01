@@ -1,3 +1,9 @@
+import 'dart:convert';
+
+import 'package:hive/hive.dart';
+
+import 'store.dart';
+
 // ignore_for_file: curly_braces_in_flow_control_structures, prefer_function_declarations_over_variables
 
 /*
@@ -399,6 +405,7 @@ import 'package:rxdart/rxdart.dart';
 import 'package:volt/jolt/views.dart';
 
 import 'jolt.dart';
+import 'standard.dart';
 
 // class Whatever extends ComputedView<int> {
 
@@ -463,14 +470,82 @@ abstract class JsonSerializable {
 
 final cache = {};
 
-class HiveJolt<T extends JsonSerializable> extends ComputedView<AsyncSnapshot<T>> {
-  final asyncJolt = AsyncJolt<T>();
+class User {
+  String? name;
+  int? age;
+  String? id;
+
+  User({this.name, this.age, this.id});
+
+  User.fromJson(dynamic json) {
+    name = json['name'];
+    age = json['age'];
+    id = json['id'];
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> data = new Map<String, dynamic>();
+    data['name'] = this.name;
+    data['age'] = this.age;
+    data['id'] = this.id;
+    return data;
+  }
+}
+
+
+class TestJolt {
+
+  final count = HiveJolt(0, int.parse, #count);
+  final user = HiveJolt<User?>(null, User.fromJson, #user);
+
+  TestJolt() {
+    count.value = 10;
+    user.value = User(name: "jason");
+  }
+
+}
+
+class HiveJolt<T> extends ComputedView<AsyncSnapshot<T>> {
+  final asyncJolt = jolt.async<T>();
+  
   final T Function(String value) fromJson;
 
-  set value(T value) {}
+  late final FutureOr<Box<String>> box;
+  
+  final T initialValue;
+
+  Future<void> clear() async {
+    return (await box).delete(key);
+  }
+
+  @override 
+  void lazyInit() async {
+
+    asyncJolt.future = Hive.openBox<String>("HiveJolt").then((box) async {
+      box = box;
+      final maybeValue = box.get(key);
+      if (maybeValue == null) return initialValue;
+      else return fromJson(maybeValue);
+    });
+    
+    onDispose(() {
+      Future.value(box).then((box) => box.close());
+    });
+  }
+
+  final dynamic key;
+
+  HiveJolt(this.initialValue, this.fromJson, this.key);
+
+  set value(T value) {
+    asyncJolt.future = Future.value(box).then((box) async {
+      await box.put(key, jsonEncode(value));
+      return value;
+    });
+  }
 
   @override
-  AsyncSnapshot<T> compute(Watch read) {
+  AsyncSnapshot<T> compute(watch) {
     return asyncJolt.value;
   }
 }

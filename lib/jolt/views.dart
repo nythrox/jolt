@@ -1,24 +1,38 @@
-
 import 'package:flutter/foundation.dart';
 
 import 'jolt.dart';
 import 'store.dart';
 import 'value_notifier_helper.dart';
 
-// Views are utility classes that help you build custom jolts in a certain way, 
-// facilitating the construction of custom jolts 
-
+// Views are utility classes that help you build custom jolts in a certain way,
+// facilitating the construction of custom jolts
 
 /// Utility mixin for creating a raw jolt using [ValueNotifierJoltHelper] that implements the [Jolt] interface
-abstract class JoltView<T> with JoltStreamMixinHelper<T> implements Jolt<T> {
+abstract class JoltView<T>
+    with JoltStreamMixinHelper<T>, Store
+    implements Jolt<T> {
   @protected
   final helper = ValueNotifierJoltHelper<T>();
 
-  @override
-  VoidCallback onEvent(EventListener<T> onEvent) => helper.onEvent(onEvent);
+  bool _initialized = false;
+
+  @protected
+  void lazyInit() {}
 
   @override
-  void dispose() => helper.dispose();
+  VoidCallback onEvent(EventListener<T> onEvent) {
+    if (!_initialized) {
+      lazyInit();
+      _initialized = true;
+    }
+    return helper.onEvent(onEvent);
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    helper.dispose();
+  }
 
   @override
   Stream<T> get asStream => helper.asStream;
@@ -26,11 +40,11 @@ abstract class JoltView<T> with JoltStreamMixinHelper<T> implements Jolt<T> {
 
 // todo: extend ValueNotifierJoltHelper to use less memory, but dont allow the methods to leak
 /// Utility mixin for creating a raw jolt using [ValueNotifierJoltHelper] that implements the [ValueJolt] interface
-abstract class ValueJoltView<T> extends JoltView<T> implements ValueJolt<T> { // with ValueNotifierMixinHelper<T>
+abstract class ValueJoltView<T> extends JoltView<T> implements ValueJolt<T> {
+  // with ValueNotifierMixinHelper<T>
 
   @override
   T get currentValue => helper.lastEmittedValue as T;
-
 }
 
 /**
@@ -41,27 +55,22 @@ abstract class ValueJoltView<T> extends JoltView<T> implements ValueJolt<T> { //
  * 
  */
 
-
 /// Interface that facilitates the creation of [ValueJolt] through [emit] new values.
 class StateView<T> extends ValueJoltView<T> implements ValueJolt<T> {
-
   T get state => currentValue;
 
-  @protected 
-  void emit(T value) {
-    helper.addEvent(value);
-  }
+  @protected
+  void emit(T value) => helper.addEvent(value);
 
   StateView(T value) {
     emit(value);
   }
 
   StateView.late();
-
 }
 
-// All jolts are **LAZY**. They only start emitting events, or for ComputedViews: tracking 
-// their streams, once onEvent or stream.listen() is called. 
+// All jolts are **LAZY**. They only start emitting events, or for ComputedViews: tracking
+// their streams, once onEvent or stream.listen() is called.
 // ^ this is wrong. they should track streams instantly, just like any stream transformer
 
 // INTERESTING:
@@ -74,21 +83,21 @@ class StateView<T> extends ValueJoltView<T> implements ValueJolt<T> {
 // This problem seems to exist with BehaviourSubject, since setting the value is synchronous, before emitting
 // and the value gets set even if the event gets discarded
 
-// ComputedViews are **LAZY**. They don't start tracking their dependencies until their 
+// ComputedViews are **LAZY**. They don't start tracking their dependencies until their
 // .value is called (which could be through a .asStream(startWithValue: true)).
-// if you want to start tracking them instantly, .build or .autorun or 
-// 
-// it makes sense that its lazy until .value is explicitly called, since the .onEvent part of 
+// if you want to start tracking them instantly, .build or .autorun or
+//
+// it makes sense that its lazy until .value is explicitly called, since the .onEvent part of
 // jolt does not require a initial value. But this may be confusing when someone subscribes to a stream
 // (expected to already be running) and it does not update (until value is called). After all, if it subscribes
 // to the Stream/StreamController contract, it should start running as soon as there is a subscriber.
-// 
-// therefore: ComputedViews can't be Lazy, since we use streams to transform them 
-// 
+//
+// therefore: ComputedViews can't be Lazy, since we use streams to transform them
+//
 // problem: .listen() called from anywhere non directly, (not from build widget)
 
 // Question: is there such a thing as a Stream that also has a synchronous value?
-// shouldn't this be implemented using streams and not jolt (since it's a transformer, lazy, 
+// shouldn't this be implemented using streams and not jolt (since it's a transformer, lazy,
 // cancel/pause should be adequately handled)?
 // There must be a reason why RxDart uses StreamController with value, and not Stream with value
 
@@ -97,26 +106,25 @@ class StateView<T> extends ValueJoltView<T> implements ValueJolt<T> {
 // for building Jolts whoms [value] derived from others
 
 // i thought u would be able to create Jolts from all complexities using ComputedView,
-// but it has a lot of difficulty managing subscriptions from Jolts (no value), 
-// adding/removing subscriptions dynamically/conditionally, 
+// but it has a lot of difficulty managing subscriptions from Jolts (no value),
+// adding/removing subscriptions dynamically/conditionally,
 // allowing for the creation/transformation of new jolts and streams. Would have to have a full
 // fledged keyed-hook system, so i guess its better to just use ValueJoltFromValueNotifierHelper in those cases
-
-
 
 /// Helpful interface for creating jolts using derived from other jolts (jotai or riverpod-style)
 ///
 /// Computed jolts are **lazy**, so they will only start tracking other jolts once [onEvent] is called (or [Stream.listen]).
-/// This means that ComputedJolts can watch [StateJolt.late] and other jolts that may not have their [currentValue] 
+/// This means that ComputedJolts can watch [StateJolt.late] and other jolts that may not have their [currentValue]
 /// set, and will only call them once they are forced to compute.
-abstract class ComputedView<T> extends ValueJoltView<T> implements ValueJolt<T>  {
-
+abstract class ComputedView<T> extends ValueJoltView<T>
+    implements ValueJolt<T> {
   // JoltView.late();
   @override
-  T get currentValue { 
-    if (helper.isSet) return super.currentValue;
+  T get currentValue {
+    if (_initialized)
+      return super.currentValue;
     else {
-      run();
+      lazyInit();
       return super.currentValue;
     }
   }
@@ -127,12 +135,7 @@ abstract class ComputedView<T> extends ValueJoltView<T> implements ValueJolt<T> 
   final Map<Symbol, dynamic> _vars = {};
 
   @override
-  VoidCallback onEvent(EventListener<T> onEvent) {
-    if (!helper.isSet) run();
-    return super.onEvent(onEvent);
-  }
-
-  ComputedView();
+  lazyInit() => run();
 
   T compute(WatchBuilder watch);
 
@@ -140,11 +143,10 @@ abstract class ComputedView<T> extends ValueJoltView<T> implements ValueJolt<T> 
   void run() => _run(compute, helper.addEvent);
 
   late final _builder = WatchBuilder(this);
-  
+
   void _run<R>(Compute<R> calc, void Function(R) handleValue) {
     handleValue(calc(_builder));
   }
-
 }
 
 // Builder((watch) {
@@ -162,12 +164,11 @@ extension Default<T> on T? {
 
 // TODO: maybe watch.stream returns what a StreamBuilder would return? AsyncSnapshot? same for Future and FutureBuilder
 class WatchBuilder {
-
   final ComputedView owner;
 
   WatchBuilder(this.owner);
-  
-  /// Computed always needs a immediate value when consuming Jolts 
+
+  /// Computed always needs a immediate value when consuming Jolts
   /// watch.value(counter, transform: (stream) => stream.debounce())
   /// watch(event, initialValue: null, transform: (stream) => stream.debounce())
   T? call<T>(Jolt<T> jolt, {Object? key}) {
@@ -184,7 +185,6 @@ class WatchBuilder {
     return value;
   }
 
-
   // stop allowing streams to be consumed now that we have Transform with PureStream
   // T stream<T>(Stream<T> jolt, T initialValue) {
   //   bool valueSet = false;
@@ -199,10 +199,9 @@ class WatchBuilder {
   //   }
   //   return valueSet ? value! : initialValue;
   // }
-  
 
   // TODO: build this (for using keyed-hooks inside of a Compute function)
-  /// Uses a stream created from [createStream], updated when [deps] change, always retrived from the same [key] 
+  /// Uses a stream created from [createStream], updated when [deps] change, always retrived from the same [key]
   // T useStream<T>(Stream<T> Function() createStream, T initialValue, {required Object key, List<Object>? deps}) {
 
   // }
@@ -213,14 +212,13 @@ class WatchBuilder {
 
   // Stream<T2> Function(Stream<T>)? transform}
   T value<T>(ValueJolt<T> jolt, {Stream Function()? signal, Object? key}) {
-    key??= jolt;
+    key ??= jolt;
     if (!owner._watching.contains(jolt)) {
       final listener = jolt.onEvent((_) => owner.run());
       owner.helper.onDispose(listener);
     }
     return jolt.currentValue;
   }
-
 
   // J jolt<T, J extends Jolt<T>>(J jolt) {
   //   return jolt;
@@ -236,7 +234,7 @@ class WatchBuilder {
 
   // T notifier<T, N extends ValueNotifier<T>>(N notifier) {
   //   return notifier.value;
-  // }  
+  // }
 
   // L listenable<L extends Listenable>(L listenable) {
   //   return listenable;
