@@ -40,6 +40,8 @@ dependencies:
   mobx:
   flutter_mobx:
   get: ^4.6.5
+  stream_transform: ^2.1.0
+
 
   
 
