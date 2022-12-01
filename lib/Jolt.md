@@ -4,14 +4,25 @@
 Jolt is supposed to offer a great flexibility in terms of state management, allowing you to structure your code according to your actual business flows, easily switching from simple mutable state like ChangeNotifier, Observable (from mobx), Rx(from getx), state machines such as Cubit (from flutter_bloc) and StateNotifier (from provider), or more complex reactive solutions using streams like RxDart and Bloc in flutter_bloc.
 
 Derived States (Riverpod, jotai, mobx)
+```dart
+class Counter extends ComputedView<int> {
+    final _counter = StateJolt(0);
 
+    @override
+    int compute(watch) {
+        return watch.value(_counter);
+    }
+
+    increment() => _counter.value++;
+}
+```
 
 State Machines (Cubit, StateNotifier)
 ```dart
-class Counter extends StateJolt<int> {
+class Counter extends StateView<int> {
     Counter() : super(0);
 
-    increment() => state++;
+    increment() => emit(state + 1);
 }
 
 class LoginState {
@@ -58,18 +69,19 @@ class LoginStore {
     }
 
     // Or, alternatively: 
-    // void submit() async {
-    //   result.loading = true;
-    //   try {
-    //     final isValid = validateEmail.value;
-    //     if (isValid) {
-    //       result.value = await loginApi(email.value, password.value);
-    //     }
-    //     else result.error = "Invalid email or password";
-    //   } catch (e) {
-    //     result.error = e;
-    //   }
-    // }
+    void submit() async {
+        result.loading = true;
+        try {
+            if (isValid.value) {
+                result.value = await api.login(email.value, password.value);
+            }
+            else {
+                result.error = "Invalid email or password";
+            }
+        } catch (e) {
+            result.error = e;
+        }
+    }
 }
 
 ``` 
@@ -80,11 +92,9 @@ class SearchUserStore {
 
     final query = StateJolt("");
 
-    final debouncedQuery = query.stream.debounce(Duration(milliseconds: 300))
-
-    // AsyncJolt<List<UserModel>>
+    // ReadonlyAsyncJolt<List<UserModel>>
     late final users = ComputedJolt.future((watch) async {
-        final name = watch.value(query, operate: (stream) => stream.debounce(Duration(milliseconds: 300)));
+        final name = watch.value(query, signal: () => query.stream.debounce(Duration(milliseconds: 300)));
         if (name.length == 0) {
             return [];
         }
@@ -112,8 +122,8 @@ class SearchUserStore {
                     users.value = [];
                 }
                 else users.future = api.searchUsers(name: name);
-            }
-        ));
+            }),
+        );
     }
 }
 ```

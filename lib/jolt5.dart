@@ -54,8 +54,8 @@ Library-wise:
     - extension(statenotifier), 
     - jotai-style computed/decorated (jotai).orElse().compose(FutureJolt.fromJolt), 
     - streams<I,O>.map.flatMap (keep properties))
-- streams <I,O> keep original form, modify interior output stream (with operators)
-
+- operator problem for streams <I,O> keep original properties, modify interior output stream (with operators)
+    - ^ u cant keep the same shape (ex BehaviourSubject(0).when(value != 0) so .value shouldn't exist in final stream)
 Utility-wise
 - atomic mutable state, State, Computed, Future, Stream
 - streams: rx operators on ^ & use inside of computed
@@ -110,18 +110,38 @@ system (ex: if you want to add errors, create another parameter for errors or re
 In the joltverse, we have:
 - streams: notifies listeners when an event occurs
 - mutable states: notifies listeners when there is a state change
-- 
+
 
 there are some primitives for consuming all Jolts: listen, when, react, etc
-and some primtiives for creating State jolts: ComputedJolt, StateJolt, JoltView
+
+and some primtiives for creating custom jolts: StateView, JoltView
+and some pre-defined jolts: StateJolt, ComputedJolt, AsyncJolt, EventJolt, ActionJolt
+and some helpers for handling jolts and streams: Store
+using these tools you can start making your own jolts (deriving them or handling listeners and emitting states)
 
 
 StorageAtom.fromAtom()
 
 extensions: 
-Jolt.fromStream()
-Jolt.fromErrorStream()
-Jolt.fromFuture()
+ValueJolt<T> extends Jolt<T>.fromStream()
+ErrorJolt<T> extends Jolt<Result<T>>.fromErrorStream()
+AsyncJolt<T> extends Jolt<AsyncResult<T>>.fromFuture()
+
+all these weird fucking adaptations to be able to consume streams in a ComputedJolt, non-value Jolts 
+do they really even have anything in common, shouldnt jolt have its own operators so no black magic needed (then operator problem)
+using jolt operators will be easier; preserving the .value but allowing interaction with valueless jolts 
+!really: what is the advantage of using an EventJolt over a StreamController, if interop with ComputedJolt is the same,
+to play with it you have to .listen and use stream operators to transform it. 
+transform, operate, signal
+
+focus on adding good features to Value Jolts: lazy by default, listen, when, react, etc., operators, 
+views, composition, 
+
+extending JoltView allows you to consume other jolts internally,
+but should allow the user to send you jolts 
+ex: AsyncJolt should be able to be build from any Jolt<Future<>>
+so AsyncJolt.fromFuture(Future.value()) or AsyncJolt.fromJolt(ComputedJolt((read) => Future.value()))
+
 
 question: how is ComputedJolt.fromFuture different from AsyncJolt?
 how is AsyncJolt different from Jolt<Future<T>>?
@@ -135,7 +155,32 @@ computed everything? where should computed be.
 
 how should I unify all these. How should I convert betweem them. How should I build one from the other (must I really create a new class?)
 
+
+No need for readonly (readonly is not STATE)
+All atoms with Computed constructors can not have mutable methods
+Only atoms with Value constructors can have mutable methods (.value=, .reset(), .future=)
+
 Riverpod only has one type of Provider. 
+        Computed Readonly | Stateful | Readonly
+Value     () => 0            0.=         0       
+Future    () => Future       Future.=    Future
+Stream    () => Stream       Stream.=    Stream
+
+^ the number exponentially increased when you have not only those, but also withReset, withStorage, etc.
+a universal exchange converter would solve this, but has its owm problems (for transforming outputs, adding prop functionality, and overriding)
+
+
+It's better to start with a Computed (readonly state), because from that you can derrive Readonly and also Mutable State
+
+
+
+Jolt configs(unique, )
+
+watch.get(value) // hasValue, didChange, hasEmitted, previousValue
+
+If everything you do is derived, you only need stateful and derived readonly ones (like Riverpod). 
+Since we are facilitating a mobx style, u need mutable helpers too
+
   Computed, readonly
     - value
     - future
@@ -143,31 +188,6 @@ Riverpod only has one type of Provider.
   Stateful
     - value (no future handlings)
 
-If everything you do is derived, you only need stateful and derived readonly ones. 
-Since we are facilitating a mobx style, u need mutable helpers too
-- Stateful
-  - Async
-    - Future
-    - Stream
-  - Value
-- Derived readonly (computed)
-  - Async
-    - Future
-    - Stream
-  - Value
-- Un-derived readonly << whats the point of having un-derived if you can't mutate it, derived is the same and better (this is inferior, but could be used as a common base)
-  - Async
-    - Future
-    - Stream
-  - Value
-- Reset
-  - Async
-    - Future
-    - Stream
-  - Value
-
-  ^ the number exponentially increased when you have not only those, but also withReset, withStorage, etc.
-  a universal exchange converter would solve this, but has its owm problems (for transforming outputs, adding prop functionality, and overriding)
 
   ^^^ do we need all these????? FUCK!!!!!!!!!!!! Provider does it with just Computed
   --------------- but they don't allow for the BEAUTY of AsyncState
@@ -295,7 +315,7 @@ Store {
 CounterStore extends StateJolt<int> {
   CounterStore() : super(0);
   void increment() {
-    value++;
+    state++;
   }
 }
 
@@ -333,13 +353,21 @@ import 'package:get/get.dart';
 import 'package:riverpod/riverpod.dart';
 import 'package:rxdart/rxdart.dart';
 
-class Whatever extends JoltView<int> {
+class Whatever extends ComputedView<int> {
 
   final jolt = StateJolt(0);
 
+  late final owo = jolt.transform((stream) => 
+    stream
+      .debounceTime(const Duration(seconds: 1))
+      .where((event) => event % 2 == 0)
+      .skip(3)
+      .take(10),
+  );
+
   @override
   int compute(WatchBuilder watch) {
-    final value = watch.value(jolt);
+    final value = watch.value(jolt, signal: () => jolt.asStream.where((i) => i % 2 == 0).debounceTime(const Duration(seconds: 1)));
     final value2 = watch(jolt, 0);
     final value3 = watch.transform<int, int>(jolt, 0, transform: (s) => s.debounceTime(const Duration(milliseconds: 300)).map((n) => n * 2));
     // final s = watch.stream(Stream<int>.periodic(Duration(seconds: 1), (i) => i + 1), 0);
@@ -396,7 +424,7 @@ void main() {
     }
   });
 
-  final name = ComputedJolt((exec) => 2).convert(JoltView.fromJolt);
+  final name = ComputedJolt((exec) => 2).convert(ComputedView.fromJolt);
 }
 
 typedef EventListener<T> = void Function(T event);
@@ -496,15 +524,169 @@ mixin ValueNotifierJoltImpl<T> {
 
   ValueNotifier<T> get asNotifier => ValueNotifier(currentValue);
   
-  // TODO: test if this gets the child's @override currentValue
-  Stream<T> get asStream => helper.asStream.startWith(currentValue);
+  Stream<T> get asStream => helper.asStream;
   
 }
+
+typedef Compute<T> = T Function(WatchBuilder watch);
+
+// for creating ValueJolts
+class ValueJoltView<T> extends ComputedView<T> {
+  final ValueJolt<T> jolt;
+  ValueJoltView.fromJolt(this.jolt);
+  ValueJoltView.computed(Compute<T> compute) : jolt = ComputedJolt(compute);
+  
+  @override
+  T compute(WatchBuilder watch) => watch.value(jolt);
+}
+
+final lalal = FutureJolt.computed((watch) async {
+  return 0;
+});
+
+
+// interfaces for external Jolt consumption, and interfaces for internal jolt construction (ValueJolt, ReadonlyJolt, MutableJolt)
+
+// Some jolts can be represented through computing other jolts, in that case you can extend ComputedView.
+// if you want them to share the Computed interface, add a CustomJolt.computed(Computed<T> compute) constructor.
+// Other jolts are very specific in when and how they emit new events. In that case, it's better to 
+// extend the StateView interface which grants you greater flexibility on how to emit() new events.
+
+/// ComputedView is a abstract class that simplifies the proccess of managing subscriptions to other jolts:
+/// you can subscribe to other jolts through the `watch` interface, and every time one of them emits a new value,
+/// the `compute` function will be called and it's result will be emitted as the single new value.
+
+// a class that you can publically emit new values
+abstract class EventJolt<T> implements Jolt<T>, Sink<T> {
+
+  factory EventJolt() = _SimpleEventJolt;
+
+  factory EventJolt.fromPureStream(Stream<T> stream) = _SimpleEventJolt.fromPureStream; 
+
+  @override
+  void add(T value);
+
+  @override 
+  void close() => dispose();
+}
+
+abstract class MutableJolt<T> implements ValueJolt<T>, EventJolt<T>, Sink<T> {
+  @override
+  void add(T value);
+
+  void update(T Function(T currentValue) updateFn) => add(updateFn(currentValue));
+
+  @override 
+  void close() => dispose();
+}
+
+abstract class FutureJolt<T> implements ValueJolt<AsyncSnapshot<T>> {
+
+  AsyncSnapshot<T> get value => currentValue;
+
+  T? get valueOrNull => value.data;
+
+  Object? get errorOrNull => value.error;
+  
+  T get tryValue => value.data!;
+  
+  Object get tryError => value.error!;
+
+  factory FutureJolt.computed(Compute<Future<T>> compute) = _ComputedFutureJolt.computed;
+  factory FutureJolt.future(Future<T> future) = _ComputedFutureJolt.future;
+  factory FutureJolt.value(AsyncSnapshot<T> value) = _ReadonlyFutureJolt;
+}
+
+abstract class AsyncJolt<T> with FutureJolt<T>, StreamJolt<T> {
+
+} 
+
+class _ComputedFutureJolt<T> extends ComputedView<AsyncSnapshot<T>> implements FutureJolt<T> {
+
+  final ComputedJolt<Future<T>> computed;
+
+  final AsyncSnapshot<T>? readonlyValue;
+
+  _ComputedFutureJolt.computed(Compute<Future<T>> compute) : computed = ComputedJolt(compute), readonlyValue = null;
+  _ComputedFutureJolt.future(Future<T> future) : computed = ComputedJolt((_) => future), readonlyValue = null;
+
+  final state = StateJolt(AsyncSnapshot<T>.waiting());
+
+  late Future<T> _trackingFuture;
+
+  @override
+  Future<T> get future => _trackingFuture;
+
+  @override
+  AsyncSnapshot<T> get value => currentValue;
+
+  @override
+  T? get valueOrNull => value.data;
+
+  @override
+  Object? get errorOrNull => value.error;
+  
+  @override
+  T get tryValue => value.data!;
+  
+  @override
+  Object get tryError => value.error!;
+
+  @override
+  AsyncSnapshot<T> compute(watch) {
+    if (readonlyValue != null) return readonlyValue!;
+    final future = watch.value(computed);
+    if (_trackingFuture != future) {
+      _trackingFuture = future;
+      future.then((value) {
+        if (_trackingFuture == future) {
+          state.value = AsyncSnapshot.withData(ConnectionState.done, value);
+        }
+      });
+      future.catchError((error) {
+        if (_trackingFuture == future) {
+          state.value = AsyncSnapshot.withError(ConnectionState.done, error);
+        }
+      });
+      state.value = AsyncSnapshot<T>.waiting();
+    }
+    return watch.value(state);
+  }
+}
+
+class _ReadonlyFutureJolt<T> extends ComputedView<AsyncSnapshot<T>> implements FutureJolt<T> {
+  _ReadonlyFutureJolt(this.value);
+
+  @override
+  final AsyncSnapshot<T> value;
+  
+  @override
+  AsyncSnapshot<T> compute(WatchBuilder watch) => value;
+  
+  @override
+  Object? get errorOrNull => value.error;
+  
+  @override
+  Future<T> get future {
+    if (value.hasData) return Future.value(value.data);
+    if (value.hasError) return Future.error(value.error!);
+    else return Completer<T>().future;
+  }
+  
+  @override
+  Object get tryError => value.error!;
+  
+  @override
+  T get tryValue => value.data!;
+  
+  @override
+  T? get valueOrNull => value.data;
+} 
 
 // BaseJolt for building jolts that can emit events on will
 
 // for building Jolts whoms [value] derived from others
-abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>  {
+abstract class ComputedView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>  {
 
   // JoltView.late();
   @override
@@ -516,7 +698,7 @@ abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>
     }
   }
 
-  static JoltView<T> fromJolt<T>(ValueJolt<T> jolt) {
+  static ComputedView<T> fromJolt<T>(ValueJolt<T> jolt) {
     return ComputedJolt((exec) => exec(jolt));
   }
 
@@ -529,7 +711,7 @@ abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>
   // use(Jolt(0))
   final Map<Symbol, dynamic> vars = {};
 
-  JoltView() {
+  ComputedView() {
     run();
   }
 
@@ -537,9 +719,11 @@ abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>
 
   @protected
   void run() => _run(compute, helper.addEvent);
+
+  late final _builder = WatchBuilder(this);
   
   void _run<R>(Compute<R> calc, void Function(R) handleValue) {
-    handleValue(calc(_handleCalc));
+    handleValue(calc(_builder));
   }
 
 }
@@ -553,14 +737,14 @@ abstract class JoltView<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T>
 
 class WatchBuilder {
 
-  final JoltView owner;
+  final ComputedView owner;
 
   WatchBuilder(this.owner);
   
   /// Computed always needs a immediate value when consuming Jolts 
   /// watch.value(counter, transform: (stream) => stream.debounce())
   /// watch(event, initialValue: null, transform: (stream) => stream.debounce())
-  T call<T>(Jolt<T> jolt, T initialValue) {
+  T call<T>(Jolt<T> jolt, T initialValue, {Object? key}) {
     bool valueSet = false;
     T? value;
     if (!owner._watching.contains(jolt)) {
@@ -574,13 +758,11 @@ class WatchBuilder {
     return valueSet ? value! : initialValue;
   }
 
-  T2 transform<T, T2>(Jolt<T> jolt, T2 initialValue, {required Stream<T2> Function(Stream<T> stream) transform}) {
+  T stream<T>(Stream<T> jolt, T initialValue) {
     bool valueSet = false;
-    T2? value;
-    Stream<T2> transformedStream;
+    T? value;
     if (!owner._watching.contains(jolt)) {
-      transformedStream = transform(jolt.asStream);
-      final subscription = transformedStream.listen((value) {
+      final subscription = jolt.listen((value) {
         value = value;
         valueSet = true;
         owner.run();
@@ -590,8 +772,18 @@ class WatchBuilder {
     return valueSet ? value! : initialValue;
   }
 
+  /// Uses a stream created from [createStream], updated when [deps] change, always retrived from the same [key] 
+  T useStream<T>(Stream<T> Function() createStream, T initialValue, {required Object key, List<Object>? deps}) {
+
+  }
+
+  // ideal would be:
+  // watch(jolt.debounce().map()) but need initial value, stream cannot be re-created each time, needs key to save key, and deps to know when to update
+  // watch(jolt, transform: (s) => s.debounce().map()) // key is jolt, transform is only a signal, doesn't allow for outside stream-signals
+
   // Stream<T2> Function(Stream<T>)? transform}
-  T value<T>(ValueJolt<T> jolt) {
+  T value<T>(ValueJolt<T> jolt, {Stream Function()? signal, Object? key}) {
+    key??= jolt;
     if (!owner._watching.contains(jolt)) {
       final listener = jolt.onEvent((_) => owner.run());
       owner.helper.onDispose(listener);
@@ -624,16 +816,17 @@ class WatchBuilder {
 
 typedef Compute<T> = T Function(WatchBuilder exec);
 
-class ComputedJolt<T> extends JoltView<T> {
+class ComputedJolt<T> extends ComputedView<T> {
   final Compute<T> computeFn;
 
   ComputedJolt(this.computeFn);
+  ComputedJolt.late(this.computeFn) : super.late();
 
   @override
   T compute(WatchBuilder watch) => computeFn(watch);
 }
 
-class ResettableJolt<T> extends JoltView<T> {
+class ResettableJolt<T> extends ComputedView<T> {
   final StateJolt<T> valueJolt;
   final T defaultValue;
 
@@ -650,7 +843,7 @@ abstract class JsonSerializable {
 }
 
 // ComputedJolt.map(jolt => AsyncJolt.fromFuture(jolt.future))
-class FutureComputedJolt<T> extends JoltView<AsyncSnapshot<T>> {
+class FutureComputedJolt<T> extends ComputedView<AsyncSnapshot<T>> {
   final AsyncJolt<T> jolt = AsyncJolt();
   late final ComputedJolt<Future<T>> computedJolt;
 
@@ -668,7 +861,7 @@ class FutureComputedJolt<T> extends JoltView<AsyncSnapshot<T>> {
 
 final cache = {};
 
-class HiveJolt<T extends JsonSerializable> extends JoltView<AsyncSnapshot<T>> {
+class HiveJolt<T extends JsonSerializable> extends ComputedView<AsyncSnapshot<T>> {
   final asyncJolt = AsyncJolt<T>();
   final T Function(String value) fromJson;
 
@@ -683,15 +876,15 @@ class HiveJolt<T extends JsonSerializable> extends JoltView<AsyncSnapshot<T>> {
 abstract class ValueJolt<T> extends Jolt<T> {
   T get currentValue;  
   ValueNotifier<T> get asNotifier;
-
-  // Stream must StartWith [currentValue]
-  @override 
-  Stream<T> get asStream;
 }
 
 abstract class Jolt<T> {
   VoidCallback onEvent(EventListener<T> onEvent);
   void dispose();
+
+  //   _JoltFromPureStream(transform(asStream));
+  
+  Jolt<T2> transform<T2>(Stream<T2> Function(Stream<T> stream) transform);
 
   Stream<T> get asStream;
 }
@@ -708,24 +901,27 @@ extension Convertable<T,U> on Jolt<T,U> {
 
 class StreamJoltHelper<T> extends StreamView<T> {  
 
+  @protected
   final StreamController<T> _controller;
+  
   StreamJoltHelper(this._controller) : super(_controller.stream);
-
+  
 }
 
-class EventJolt<T> extends StreamJoltHelper<T> implements Jolt<T> {
+class _SimpleEventJolt<T> extends StreamJoltHelper<T> with EventJolt<T> {
 
-  EventJolt(): super(StreamController.broadcast());
+  _SimpleEventJolt(): super(StreamController.broadcast());
 
+  _SimpleEventJolt.fromPureStream() : super();
+
+  @override
   void add(T value) => _controller.add(value);
   
   @override
   Stream<T> get asStream => _controller.stream;
   
   @override
-  void dispose() {
-    _controller.close();
-  }
+  void dispose() => _controller.close();
   
   @override
   VoidCallback onEvent(EventListener<T> onEvent) {
@@ -745,18 +941,37 @@ extension Tap<T> on Stream<T> {
     map(action);
   }
 }
- 
-class StateJolt<T> with ValueNotifierJoltImpl<T> implements ValueJolt<T> {
+
+
+class StateView<T> with ValueNotifierJoltImpl<T>, Store implements ValueJolt<T> {
 
   @override T get currentValue => state;
 
   T get state => helper.lastEmittedValue!;
-  set state(T value) => helper.addEvent(value);
 
-  StateJolt(T value) {
-    state = value;
+  @protected 
+  void emit(T value) {
+    helper.addEvent(value);
   }
-  StateJolt.late();
+
+  StateView(T value) {
+    emit(value);
+  }
+
+  StateView.late();
+
+}
+ 
+class StateJolt<T> extends StateView<T> implements MutableJolt<T> {
+
+  T get value => state;
+  set value(T value) => emit(value);
+
+  @override
+  void add(T value) => this.value = value;
+
+  StateJolt(T value) : super(value);
+  StateJolt.late() : super.late();
 }
 
 class FutureSubscription<T> {
@@ -765,7 +980,7 @@ class FutureSubscription<T> {
   FutureSubscription(this.onValue, this.onError);
 }
 
-class StreamJolt<T> extends JoltView<AsyncSnapshot<T>> {
+class StreamJolt<T> extends ComputedView<AsyncSnapshot<T>> {
   final StateJolt<AsyncSnapshot<T>> jolt =
       StateJolt(const AsyncSnapshot.waiting());
 
@@ -793,7 +1008,7 @@ class StreamJolt<T> extends JoltView<AsyncSnapshot<T>> {
 /// setting [valueFuture] starts tracking the future
 /// setting a [asStream] starts tracking the stream
 /// setting [value] sets the value
-class AsyncJolt<T> extends JoltView<AsyncSnapshot<T>> {
+class AsyncJolt<T> extends ComputedView<AsyncSnapshot<T>> {
   final StateJolt<AsyncSnapshot<T>> jolt =
       StateJolt(const AsyncSnapshot.nothing());
 
