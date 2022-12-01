@@ -374,18 +374,18 @@ class LoginStore {
       },
     );
 
-  void submit2() {
-        result.loading = true;
-        try {
-          final isValid = validateEmail.value;
-          if (isValid) {
-            result.value = await loginApi(email.value, password.value);
-          }
-        } catch (e) {
-          result.error = e;
-          result.loading = false;
-        }
-  }
+  // void submit() async {
+  //   result.loading = true;
+  //   try {
+  //     final isValid = validateEmail.value;
+  //     if (isValid) {
+  //       result.value = await loginApi(email.value, password.value);
+  //     }
+  //     else result.error = "Invalid email or password";
+  //   } catch (e) {
+  //     result.error = e;
+  //   }
+  // }
 }
 
 Future<bool> loginApi(String email, String password) {
