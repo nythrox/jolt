@@ -1,7 +1,7 @@
 # Jolt
 Extensible, lightweight, ultra-flexible state management for flutter.
 
-#### Features
+### Features
 - Declarative state like riverpod
 - Atomic observable state like mobx, getx and ValueNotifier
 - Streams, events, reactive-functional programming (compatibility with stream operators/transformers) like flutter_bloc, rxdart and stream_transform
