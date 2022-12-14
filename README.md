@@ -41,8 +41,8 @@ class GithubStore with Store {
 Consume jolt in a widget
 ```dart
 JoltBuilder((context, watch) {
-    final result = watch.value(store.repositories);
-    return result.when(
+    final snapshot = watch.value(store.repositories);
+    return snapshot.when(
         loading: () => CircularProgressIndicator(),
         error: (e) => Text("Somethinng went wrong! Error: $e"),
         data: (repositories) {
@@ -58,9 +58,9 @@ JoltBuilder((context, watch) {
 Observe jolts from anywhere
 ```dart
 store.users
-    .when((result) => result.hasData)
-    .listen((result) {
-        final repositories = result.data.map((repository) => repository.name);
+    .when((snapshot) => snapshot.hasData)
+    .listen((snapshot) {
+        final repositories = snapshot.data.map((repository) => repository.name);
         print("Found github repositories: $repositories");
     });
 ```
