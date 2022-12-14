@@ -1,6 +1,17 @@
-### Jolt
+# Jolt
+Extensible, lightweight, ultra-flexible state management for flutter.
 
-### Why Jolt
+### Why Jolt? In a nutshell.
+
+#### Jolt advantages
+model
+Jot allows you to model your state according to your needs, and easily replace or extend jolts when needed.
+- Declarative state like riverpod and mobx
+- Observable state like mobx, getx and ChangeNotifier
+- Streams, events, reactive programming like flutter_bloc and rxdart
+- Create custom jolts to suit your domain-specific purposes
+- Easy to modify or extend your code thanks to jolts of different types being interchangeable
+
 Jolt allows you to have the declarative state from Riverpod/mobx/getx, use reactive-functional programming operators from StreamControllers, flutter_bloc, rxdart, stream_transform, create State Machines like Cubit(flutter_bloc), ValueNotifier, StateNotifier, and use simple, mutable state from mobx, getx, ChangeNotifier and etc. Additionally, Jolt allows you to easily extend it and create your own Jolts for specific use-cases (such as a HiveJolt), or facilitating dealing with data types (FutureJolt).
 Offering a library of ...
 
