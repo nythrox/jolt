@@ -18,6 +18,7 @@ You can structure your state according to your actual business flows: create cus
 With Jolt, you can always use the right state model to represent your domain. But with great power comes great responsibility, so use it thoughtfully.
 
 ### Showcase
+
 Create a store using Jolts
 ```dart
 class GithubSearch with Store {
@@ -35,7 +36,7 @@ class GithubSearch with Store {
 }
 ```
 
-Consume jolt in a widget:
+Consume jolt in a widget
 ```dart
 JoltBuilder((context, watch) {
     final result = watch.value(store.repositories);
