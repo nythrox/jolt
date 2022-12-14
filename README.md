@@ -32,7 +32,7 @@ class GithubStore with Store {
         }
         else return await api.searchUsers(name: name);
     })
-    .toAsyncJolt(); // wraps future with AsyncData<T> for type-safe consumption
+    .toAsyncJolt(); // wraps future with AsyncSnapshot<T> for type-safe consumption
     .toOfflineJolt(defaultValue: [], configs: cacheConfigs); // saves the result locally using Hive
 
 }
@@ -50,6 +50,7 @@ JoltBuilder((context, watch) {
                 children: repositories.map((repo) => Text(repo.name)).toList(),
             );
         },
+        nothing: () => Text("Sorry, you're offline!"),
     )
 });
 ```
