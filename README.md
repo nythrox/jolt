@@ -51,7 +51,7 @@ JoltBuilder((context, watch) {
             );
         },
         nothing: () => Text("Sorry, you're offline!"),
-    )
+    );
 });
 ```
 
