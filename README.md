@@ -1,57 +1,81 @@
 # Jolt
 Extensible, lightweight, ultra-flexible state management for flutter.
 
+#### Features
+- Declarative state like riverpod
+- Atomic observable state like mobx, getx and ValueNotifier
+- Streams, events, reactive-functional programming (compatibility with stream operators/transformers) like flutter_bloc, rxdart and stream_transform
+- State machines like cubit and StateNotifier
+- Create custom jolts for specific use cases (ex. OfflineJolt, ValidationJolt, TextControllerJolt, HiveJolt), or to simplify the usage of data types (ex. FutureJolt)
+- Effortlessly extend your state when needed to add complex behaviour without having to rewrite your code (interoperability between jolts of different types)
+ 
 ### Why Jolt? In a nutshell.
 
-#### Jolt advantages
-model
-Jot allows you to model your state according to your needs, and easily replace or extend jolts when needed.
-- Declarative state like riverpod and mobx
-- Observable state like mobx, getx and ChangeNotifier
-- Streams, events, reactive programming like flutter_bloc and rxdart
-- Create custom jolts to suit your domain-specific purposes
-- Easy to modify or extend your code thanks to jolts of different types being interchangeable
+Jolt's biggest advantage over other libraries is it's near infinite flexibility: you can build your state according to your specific needs for each part of the app, as complex or simple as the use case demands. 
 
-Jolt allows you to have the declarative state from Riverpod/mobx/getx, use reactive-functional programming operators from StreamControllers, flutter_bloc, rxdart, stream_transform, create State Machines like Cubit(flutter_bloc), ValueNotifier, StateNotifier, and use simple, mutable state from mobx, getx, ChangeNotifier and etc. Additionally, Jolt allows you to easily extend it and create your own Jolts for specific use-cases (such as a HiveJolt), or facilitating dealing with data types (FutureJolt).
-Offering a library of ...
+You can structure your state according to your actual business flows: create custom jolts to suit your needs, have a store using multiple styles and types of jolts, add complex behaviour and modify existing stores without having to rewrite your existing code.
 
-You can build your state according to your specific needs for each part of the app. Jolt offers near infinite flexibility so you can use a state model that's as complex or as simple as the situation demands, while always keeping interchangeability with all other modes.
+With Jolt, you can always use the right state model to represent your domain. But with great power comes great responsibility, so use it thoughtfully.
 
-Jolt is a type-safe/strongly typed primitive that abstracts over/under Streams, ValueNotifiers (and consequentially StateNotifiers). 
-It also focuses on bringing ease to creating new types of Jolts (using the riverpod/jotai model of deriving state units from others reactively) and composing, transforming and exchanging those types. 
-The default/builtin/standard Jolts allow use of dealing with Streams and handling Futures    
-it is also Lightweight since default implementations use ValueNotifier under the hood 
+### Showcase
+```dart
+class GithubSearch with Store {
 
-Because the Jolt interface is extremely flexible, it allows you to program your state management in ways similar to Provider (with ChangeNotifier/StateNotiifer), GetX and Mobx, Bloc (flutter_blox), RxDart or stream_transform (using StreamControllers/consuming Streams) and everything else, without having to switch libraries or even re-write your State Management to build a feature in a specific way, or simply use a feature that your library's state management model doesn't support. 
+    final query = jolt("");
 
+    late final repositories = jolt.computed.future((watch) async {
+        final name = watch(query.stream.debounce(Duration(milliseconds: 300)));
+        if (name.length == 0) {
+            return [];
+        }
+        else return await api.searchUsers(name: name);
+    });
 
-Because , allows for flexibility extremely extensive reactive variants (ValueJolt, MutableJolt, Streams, etc)
-all of them following the principles of reactive, strongly typed programming.
+}
 
-the Jolt standard library offers a complete toolkit for dealing with derived state, mutable state, streams, futures and more.
+// consume jolt in a widget:
+JoltBuilder((context, watch) {
+    final result = watch.value(store.repositories);
+    return result.when(
+        loading: () => CircularProgressIndicator(),
+        error: (e) => Text("Somethinng went wrong! Error: $e"),
+        data: (repositories) {
+            return ListView(
+                children: repositories.map((repo) => Text(repo.name)).toList(),
+            );
+        },
+    )
+});
 
-Additionally, Jolts have a special relation with Streams. In order to guarantee greater interopability with the extensive stream operators (from dart core and from packages) that already exist, jolt transformations are done through Streams.
+// observe jolt from anywhere
+store.users
+    .when((result) => result.hasData)
+    .listen((result) {
+        final repositories = result.data.map((repository) => repository.name);
+        print("Found github repositories: $repositories");
+    });
+```
 
-You may think of Jolt as a StreamController that allows for 
+### Jolt (abstraction)
+Jolt is a very simple primitive that can be extended in a multitude of ways in order to encapsule almost any existing state model.
 
-keywords: interchangeability, reactive, functional, strongly-typed
+The Jolt interface abstracts over Streams and StateNotifiers. Classes that implement it follow the principles of strongly typed functional-reactive programming. Having a common Jolt interface allows for the interoperability of all different types of jolts. 
 
-must be: intuitive (easy interfaces for extending, composing, etc), and very simple defaults (jolt builder 4 the win), late-first
+You may think of Jolt as a Stream that may have a sync current value (its state), and that emits events or notifications (when its state changes).
 
-##### Creating jolts
+Jolt implementations use ValueNotifiers under the hood in order to stay lightweight and performant.
 
-##### Types of Jolts
-Jolt is supposed to offer a great flexibility in terms of state management, allowing you to structure your code according to your actual business flows, easily switching from simple mutable state like ChangeNotifier, Observable (from mobx), Rx(from getx), state machines such as Cubit (from flutter_bloc) and StateNotifier (from provider), or more complex reactive solutions using streams like RxDart and Bloc in flutter_bloc.
+Jolts guarantee interopability with existing stream liberaries (dart core and external packages) by being able to be operated on using Stream transformers.
 
+### Examples
 
-
-Simple Mutable State (mobx, ChangeNotifier, getx)
+#### Observable State
 
 ```dart
 class Counter with Store {
-    final counter = jolt(0);
+    final count = jolt(0);
 
-    void increment() => counter++;
+    void increment() => count++;
 }
 ```
 
@@ -72,7 +96,7 @@ class LoginStore with Store {
     }
 
     // Or, alternatively: 
-    void submit() async {
+    void login() async {
         result.loading = true;
         try {
             if (isValid.value) {
@@ -89,24 +113,45 @@ class LoginStore with Store {
 
 ``` 
 
-Streams (rxdart, flutter_bloc)
+#### Simple cubit
 ```dart
-class SearchUserStore with Store {
+class Counter extends StateView<int> {
+    Counter() : super(0);
 
-    final query = jolt("");
-
-    // ReadonlyAsyncJolt<List<UserModel>>
-    late final users = jolt.computed.future((watch) async {
-        final name = watch.value(query, signal: () => query.stream.debounce(Duration(milliseconds: 300)));
-        if (name.length == 0) {
-            return [];
-        }
-        else return await api.searchUsers(name: name);
-    });
-
+    increment() => emit(state + 1);
 }
+```
 
-// Alternatively:
+#### Stream operators
+You can use stream operators inside a Computed, listening directly to the stream and attaching it (to be disposed together with the store) in the constructor or on the jolt declaration.
+
+```dart
+class Example with Store {
+    final count = jolt(0)
+                   ..debounce(Duration(milliseconds: 300))
+                   .listen(print)
+                   .attach(this);
+               
+    Example() {
+        final dispose = count
+            .debounce(Duration(milliseconds: 300))
+            .listen(print);
+        dispose();
+    }
+    
+    
+    final debouncedCount = count.transform((str) => str.debounce(Duration(milliseconds: 300)));
+    final _ = jolt.computed((read) {
+        final count = read(debouncedCount, initialValue: count.value);{
+        // alternatively:
+        // final count = read.value(count, signal: (str) => str.debounce(Duration(milliseconds: 300)), initialValue: count.value);
+        print(count);
+    });
+}
+             
+
+```dart
+
 class SearchUserStore with Store {
 
     final query = StateJolt("");
@@ -130,12 +175,6 @@ class SearchUserStore with Store {
 
 State Machines (Cubit, StateNotifier)
 ```dart
-class Counter extends StateView<int> {
-    Counter() : super(0);
-
-    increment() => emit(state + 1);
-}
-
 class LoginState {
     Initial()
     Loading()
@@ -147,17 +186,18 @@ class LoginStore extends StateView<LoginState> {
     LoginStore() : super(LoginState.initial());
 
     void login(String email, String password) async {
-        state = LoginState.loading();
+        emit(LoginState.loading());
         try {
             final user = await api.login(email, password);
-            state = LoginState.success(user);
+            emit(LoginState.success(user));
         }
         catch (e) {
-            state = LoginState.error(e)
+            emit(LoginState.error(e));
         }
     }
 }
 
+```dart
 class GithubSearchState {
     Empty(),
     Loading(),
@@ -189,7 +229,47 @@ class GithubSearchStore extends StateView<GithubSearchState> with Store {
 
 }
 
-// Or, even
+---
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#### Derived States (Riverpod, jotai, mobx)
+```dart
+class Counter extends ComputedView<int> {
+    final _counter = StateJolt(0);
+
+    @override
+    int compute(watch) {
+        return watch.value(_counter);
+    }
+
+    increment() => _counter.value++;
+}
+```
+
+#### Mixing different types of jolts
+```dart
 class GithubSearchStore extends ComputedView<GithubSearchState> {
     GithubSearchStore() : Super(GithubSearchState.empty());
 
@@ -214,24 +294,7 @@ class GithubSearchStore extends ComputedView<GithubSearchState> {
     }
 
 }
-
 ```
-
-
-Derived States (Riverpod, jotai, mobx)
-```dart
-class Counter extends ComputedView<int> {
-    final _counter = StateJolt(0);
-
-    @override
-    int compute(watch) {
-        return watch.value(_counter);
-    }
-
-    increment() => _counter.value++;
-}
-```
-
 
 ### ComputedJolt and ComputedView
 Computed jolts allow for declarative state management, allowing you to derive new state - or new types of jolts - reactively from other jolts, encapsulating business logic into simple, composable units of state. 
@@ -369,6 +432,15 @@ class JoltBuilder {
     
 }
 ```
+    
+
+### Guidelines
+
+We recommend you to start as simple as possible (StateJolt) and if needed, use more complex jolts for complex domains: extend StateView for State Machines, use EventJolt for stream
+##### Creating jolts
+ComputedView allows you to create a custom jolt by composing others, and emitting a value whenether any one of them changes
+StateView allows you to create a custom jolt by emitting events when there is a change. It saves the current value whenether a new event is emitted.
+
 
 ### Disposing Jolts and Stores
 Jolts can be disposed at will .by calling `jolt.dispose()`. But they only **MUST** be disposed to avoid memory leaks when they are being listened to through their `asStream` interface. In that case, you can may: 
