@@ -21,17 +21,19 @@ With Jolt, you can always use the right state model to represent your domain. Bu
 
 Create a store using Jolts
 ```dart
-class GithubSearch with Store {
+class GithubStore with Store {
 
     final query = jolt("");
 
-    late final repositories = jolt.computed.future((watch) async {
+    late final repositories = jolt.computed((watch) async {
         final name = watch(query.debounce(Duration(milliseconds: 300)));
         if (name.length == 0) {
-            return [];
+            return await api.fetchUsers();
         }
         else return await api.searchUsers(name: name);
-    });
+    })
+    .toAsyncJolt(); // wraps future with AsyncData<T> for type-safe consumption
+    .toOfflineJolt(configs.cache); // saves the result locally using Hive 
 
 }
 ```
@@ -95,26 +97,26 @@ class LoginStore with Store {
         return watch.value(email).length == 10 && watch.value(password).length == 6;
     });
 
-    late final result = FutureJolt<bool>.value(false);
+    final result = jolt.future<bool>();
 
     void login() {
         result.future = api.login(email.state, value.state);
     }
 
     // Or, alternatively: 
-    void login() async {
-        result.loading = true;
-        try {
-            if (isValid.value) {
-                result.value = await api.login(email.value, password.value);
-            }
-            else {
-                result.error = "Invalid email or password";
-            }
-        } catch (e) {
-            result.error = e;
-        }
-    }
+    // void login() async {
+    //     result.loading = true;
+    //     try {
+    //         if (isValid.value) {
+    //             result.value = await api.login(email.value, password.value);
+    //         }
+    //         else {
+    //             result.error = "Invalid email or password";
+    //         }
+    //     } catch (e) {
+    //         result.error = e;
+    //     }
+    // }
 }
 
 ``` 
