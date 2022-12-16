@@ -2,11 +2,11 @@
 Extensible, lightweight, ultra-flexible state management for flutter.
 
 ### Features
-- Declarative state like riverpod
-- Atomic observable state like mobx, getx and ValueNotifier
-- Streams, events, reactive-functional programming (compatibility with stream operators/transformers) like flutter_bloc, rxdart and stream_transform
-- State machines like cubit and StateNotifier
-- Create custom jolts for specific use cases (ex. OfflineJolt, ValidationJolt, TextControllerJolt, HiveJolt), or to simplify the usage of data types (ex. FutureJolt)
+- Declarative state like `riverpod`
+- Atomic observable state like `mobx`, `getx` and `ValueNotifier`
+- Streams, events, reactive-functional programming (compatibility with stream operators/transformers) like `flutter_bloc`, `rxdart` and `stream_transform`
+- State machines like `cubit` and `StateNotifier`
+- Create custom jolts for specific use cases (ex. `OfflineJolt`, `ValidationJolt`, `TextControllerJolt`, `HiveJolt`), or to simplify the usage of data types (ex. `FutureJolt`)
 - Effortlessly extend your state when needed to add complex behaviour without having to rewrite your code (interoperability between jolts of different types)
  
 ### Why Jolt? In a nutshell.
@@ -157,7 +157,7 @@ class Example with Store {
         print(count);
     });
 }
-             
+```             
 
 ```dart
 
@@ -205,6 +205,7 @@ class LoginStore extends StateView<LoginState> {
         }
     }
 }
+```
 
 ```dart
 class GithubSearchState {
@@ -238,7 +239,7 @@ class GithubSearchStore extends StateView<GithubSearchState> with Store {
 
 }
 
----
+```
 
 
 
