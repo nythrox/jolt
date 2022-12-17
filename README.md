@@ -32,7 +32,7 @@ class GithubStore with Store {
         }
         else return await api.searchUsers(name: name);
     })
-    .toAsyncJolt(); // wraps future with AsyncSnapshot<T> for type-safe consumption
+    .toAsyncJolt() // wraps future with AsyncSnapshot<T> for type-safe consumption
     .toOfflineJolt(cache: configs); // saves the result locally using Hive
 
 }
