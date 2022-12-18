@@ -38,6 +38,16 @@ class GithubStore with Store {
 }
 ```
 
+Update the query
+```dart
+TextField(
+  onChanged: (value) {
+   store.query.value = value;
+  },
+),
+
+```
+
 Consume jolt in a widget
 ```dart
 JoltBuilder((context, watch) {
