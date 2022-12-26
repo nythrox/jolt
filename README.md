@@ -70,7 +70,7 @@ Observe jolts from anywhere
 store.users
     .when((snapshot) => snapshot.hasData)
     .listen((snapshot) {
-        final repositories = snapshot.data.map((repository) => repository.name);
+        final repositories = snapshot.data!.map((repository) => repository.name);
         print("Found github repositories: $repositories");
     });
 ```
