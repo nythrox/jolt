@@ -38,10 +38,9 @@ class GithubStore with Store {
 
     // or, use reactive operators
     final repositories = 
-             query
+                query
                 .debounce(Duraiton(milliseconds: 300))
-                .map((name) => name.length == 0 ? api.fetchUsers() : api.searchUsers(name: name))
-                .toAsyncJolt()
+                .asyncMap((name) => name.length == 0 ? api.fetchUsers() : api.searchUsers(name: name))
                 .toOfflineJolt(cache: configs);
 
 }
