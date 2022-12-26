@@ -25,6 +25,7 @@ class GithubStore with Store {
 
     final query = jolt("");
 
+    // create a Computed jolt
     late final repositories = jolt.computed((watch) async {
         final name = watch(query.debounce(Duration(milliseconds: 300)));
         if (name.length == 0) {
@@ -34,6 +35,14 @@ class GithubStore with Store {
     })
     .toAsyncJolt() // wraps future with AsyncSnapshot<T> for type-safe consumption
     .toOfflineJolt(cache: configs); // saves the result locally using Hive
+
+    // or, use reactive operators
+    final repositories = 
+             query
+                .debounce(Duraiton(milliseconds: 300))
+                .map((name) => name.length == 0 ? api.fetchUsers() : api.searchUsers(name: name))
+                .toAsyncJolt()
+                .toOfflineJolt(cache: configs);
 
 }
 ```
