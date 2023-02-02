@@ -2,11 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/widgets.dart';
 import 'package:stream_transform/stream_transform.dart';
-import 'package:volt/jolt/extensions.dart';
+import 'package:jolt/jolt/extensions.dart';
 
 import 'standard.dart';
 import 'jolt.dart';
-import 'value_notifier_helper.dart';
 import 'views.dart';
 
 // TODO: maybe stores don't need to be dispsoed, the same way mobx observables or getx Rx aren't disposed (the store is just released from memory)

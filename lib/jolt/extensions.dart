@@ -1,4 +1,4 @@
-import 'package:volt/jolt/views.dart';
+import 'package:jolt/jolt/views.dart';
 
 import 'jolt.dart';
 import 'store.dart';

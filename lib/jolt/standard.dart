@@ -1,8 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:volt/jolt/value_notifier_helper.dart';
-import 'package:volt/jolt/views.dart';
+import 'package:jolt/jolt/views.dart';
 
 import 'jolt.dart';
 import 'store.dart';

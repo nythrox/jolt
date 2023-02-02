@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:hive/hive.dart';
+import 'package:jolt/jolt/views.dart';
 
 import 'store.dart';
 
@@ -399,13 +400,8 @@ need a way to extend (computed|state|event) jolt and only access it through its 
 import 'dart:async';
 
 import 'package:flutter/cupertino.dart';
-import 'package:get/get.dart';
 import 'package:riverpod/riverpod.dart';
 import 'package:rxdart/rxdart.dart';
-import 'package:volt/jolt/views.dart';
-
-import 'jolt.dart';
-import 'standard.dart';
 
 // class Whatever extends ComputedView<int> {
 
