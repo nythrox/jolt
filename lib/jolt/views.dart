@@ -8,8 +8,7 @@ import 'value_notifier_helper.dart';
 // facilitating the construction of custom jolts
 
 /// Utility mixin for creating a raw jolt using [ValueNotifierJoltHelper] that implements the [Jolt] interface
-abstract class JoltView<T>
-    with JoltStreamMixinHelper<T>, Store
+abstract class JoltView<T> with Store
     implements Jolt<T> {
   @protected
   final helper = ValueNotifierJoltHelper<T>();

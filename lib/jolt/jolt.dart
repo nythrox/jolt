@@ -7,7 +7,7 @@ import 'standard.dart';
 
 typedef EventListener<T> = void Function(T event);
 
-abstract class Jolt<T> implements Stream<T> {
+abstract class Jolt<T> {
   VoidCallback onEvent(EventListener<T> onEvent);
 
   void dispose();

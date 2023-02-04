@@ -36,7 +36,7 @@ extension AutodisposeSubscription<T> on StreamSubscription<T> {
   }
 }
 
-final count = jolt(0);
+// final count = jolt(0);
 
 // I'll have to think this through hehe
 // using .stream directly is nice
@@ -47,22 +47,22 @@ final count = jolt(0);
 // extend stream, that means harder operating + volt helpers have to supoprt consuming
 // streams since they are using together)
 
-final owo = jolt("")
-  ..signal((signal) {
-    count
-        .select((n) => n)
-        .distinct()
-        .where((n) => n != 0)
-        .when((previous, next) => next == 2 * previous)
-        .debounce(const Duration(seconds: 1))
-        .attach(signal);
-    count
-        .select((n) => n)
-        .distinct()
-        .where((n) => n != 0)
-        .when((previous, next) => next == 2 * previous)
-        .attach(signal);
-  }).listen((event) {}).attach(null as Store);
+// final owo = jolt("")
+//   ..signal((signal) {
+//     count
+//         .select((n) => n)
+//         .distinct()
+//         .where((n) => n != 0)
+//         .when((previous, next) => next == 2 * previous)
+//         .debounce(const Duration(seconds: 1))
+//         .attach(signal);
+//     count
+//         .select((n) => n)
+//         .distinct()
+//         .where((n) => n != 0)
+//         .when((previous, next) => next == 2 * previous)
+//         .attach(signal);
+//   }).listen((event) {}).attach(null as Store);
 
 // JoltBuilder(WatchBuilder) is always an autorun
 // jolt.autorun would be the same as jolt.watch()
