@@ -34,9 +34,7 @@ class GithubStore with Store {
     // create a Computed jolt
     late final repositories = jolt.computed((watch) async {
         final name = watch(query.debounce(Duration(milliseconds: 300)));
-        if (name.length == 0) {
-            return await api.fetchUsers();
-        }
+        if (name.length == 0) return await api.fetchUsers();
         else return await api.searchUsers(name: name);
     })
     .toAsyncJolt() // wraps future with AsyncSnapshot<T> for type-safe consumption
