@@ -1,6 +1,6 @@
 # WARNING: WIP
 
-This is an attempt to unify Streams and Observables (or signals) into a single state management construct, which would be able to represent most other data structures and state models. NOT ready for production, just a test :)
+This is an attempt to unify the concepts of Streams (time-oriented event emitters) and Observables (reactive state) into a single state management construct, which would be able to represent most other data structures and state models. NOT ready for production, just a test :)
 
 ---
 
