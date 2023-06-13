@@ -1,3 +1,9 @@
+# WARNING: WIP
+
+This is an attempt to unify Streams and Observables (or signals) into a single state management construct, which would be able to represent most other data structures and state models. NOT ready for production, just a test :)
+
+---
+
 # Jolt
 Extensible, lightweight, ultra-flexible state management for flutter.
 
