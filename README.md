@@ -25,7 +25,9 @@ With Jolt, you can always use the right state model to represent your domain. Bu
 
 ### Showcase
 
-Create a store using Jolts
+<details open>
+<summary>Create a store using Jolt</summary>
+ 
 ```dart
 class GithubStore with Store {
 
@@ -40,15 +42,28 @@ class GithubStore with Store {
     .toAsyncJolt() // wraps future with AsyncSnapshot<T> for type-safe consumption
     .toOfflineJolt(cache: configs); // saves the result locally using Hive
 
-    // or, use reactive operators
+}
+```
+
+</details>
+
+<details>
+ <summary>Chaining mode</summary>
+ 
+ ```dart
+class GithubStore with Store {
+
+    final query = jolt("");
     final repositories = 
                 query
                 .debounce(Duraiton(milliseconds: 300))
                 .asyncMap((name) => name.length == 0 ? api.fetchUsers() : api.searchUsers(name: name))
                 .toOfflineJolt(cache: configs);
-
 }
-```
+
+ ```
+
+</details>
 
 Update the query
 ```dart
@@ -126,23 +141,43 @@ class LoginStore with Store {
         result.future = api.login(email.state, value.state);
     }
 
-    // Or, alternatively: 
-    // void login() async {
-    //     result.loading = true;
-    //     try {
-    //         if (isValid.value) {
-    //             result.value = await api.login(email.value, password.value);
-    //         }
-    //         else {
-    //             result.error = "Invalid email or password";
-    //         }
-    //     } catch (e) {
-    //         result.error = e;
-    //     }
-    // }
 }
 
 ``` 
+
+<details>
+ <summary>Manually control loading and error:</summary>
+
+```dart
+class LoginStore with Store {
+    
+    final email = jolt("");
+    final password = jolt("");
+
+    late final isValid = jolt.computed((watch) {
+        return watch.value(email).length == 10 && watch.value(password).length == 6;
+    });
+
+    final result = jolt.future<bool>();
+
+    void login() async {
+         result.loading = true;
+         try {
+             if (isValid.value) {
+                 result.value = await api.login(email.value, password.value);
+             }
+             else {
+                 result.error = "Invalid email or password";
+             }
+         } catch (e) {
+             result.error = e;
+         }
+     }
+
+}
+```
+ 
+</details>
 
 #### Simple cubit
 ```dart
