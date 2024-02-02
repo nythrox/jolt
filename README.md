@@ -194,9 +194,8 @@ You can use stream operators inside a Computed, listening directly to the stream
 ```dart
 class Example with Store {
     final count = jolt(0)
-                   ..debounce(Duration(milliseconds: 300))
-                   .listen(print)
-                   .attach(this);
+                   .debounce(Duration(milliseconds: 300))
+                   .listen(print);
                
     Example() {
         final dispose = count
@@ -226,7 +225,6 @@ class SearchUserStore with Store {
 
     SearchUserJolt() {
         query
-            .stream
             .debounce(Duration(seconds: 300))
             .listen((name) {
                 if (name.length == 0) {
@@ -234,7 +232,6 @@ class SearchUserStore with Store {
                 }
                 else users.future = api.searchUsers(name: name);
             })
-            .attach(this)
     }
 }
 ```
@@ -277,9 +274,8 @@ class GithubSearchStore extends StateView<GithubSearchState> with Store {
 
     late final query = jolt("")
         // this can also be done inside the constructor or in a separate method, using listen and attach
-        ..stream
         .debounce(Duration(milliseconds: 300))
-        .listen((query) async {
+        ..listen((query) async {
             if (query.isEmpty) return emit(GithubSearchState.empty());
             
             emit(GithubSearchState.loading());
@@ -292,7 +288,7 @@ class GithubSearchStore extends StateView<GithubSearchState> with Store {
                     ? GithubSearchState.error(error.message)
                     : GithubSearchState.error('something went wrong'));
             }
-        }).attach(this);
+        });
 
 }
 
