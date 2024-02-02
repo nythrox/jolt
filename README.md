@@ -12,7 +12,7 @@ Extensible, lightweight, ultra-flexible state management for flutter.
 - Atomic observable state like `mobx`, `getx` and `ValueNotifier`
 - Streams, events, bloc, reactive-functional programming (compatibility with stream operators/transformers) like `flutter_bloc`, `rxdart` and `stream_transform`
 - State machines like `cubit`, `flutter_bloc` and `StateNotifier`
-- Create custom jolts for specific use cases (ex. `OfflineJolt`, `ValidationJolt`, `TextControllerJolt`, `HiveJolt`), or to simplify the usage of data types (ex. `FutureJolt`)
+- Create custom jolts to extend and compose functionality (ex. `OfflineJolt`, `ValidationJolt`, `TextControllerJolt`, `HiveJolt`), or to simplify the usage of data types (ex. `FutureJolt`)
 - Effortlessly extend your state when needed to add complex behaviour without having to rewrite your code (interoperability between jolts of different types)
  
 ### Why Jolt? In a nutshell.
